@@ -23,6 +23,38 @@ function Test-Command($name) {
   $null -ne (Get-Command $name -ErrorAction SilentlyContinue)
 }
 
+function Refresh-SessionPath {
+  $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+  $userPath    = [System.Environment]::GetEnvironmentVariable("Path", "User")
+  $env:Path = "$machinePath;$userPath"
+
+  # npm global bin (where claude, codex, etc. land)
+  $npmGlobal = Join-Path $env:APPDATA "npm"
+  if ((Test-Path $npmGlobal) -and ($env:Path -notlike "*$npmGlobal*")) {
+    $env:Path += ";$npmGlobal"
+  }
+
+  # Common install paths that winget uses but may not register until next login
+  $extraPaths = @(
+    "$env:ProgramFiles\Git\cmd"
+    "$env:ProgramFiles\GitHub CLI"
+    "$env:ProgramFiles\nodejs"
+    "$env:ProgramFiles\PowerShell\7"
+    "$env:ProgramFiles\Tailscale"
+    "$env:LOCALAPPDATA\Programs\Microsoft VS Code\bin"
+    "$env:LOCALAPPDATA\Microsoft\WinGet\Links"
+    "$env:LOCALAPPDATA\Programs\Python\Python312"
+    "$env:LOCALAPPDATA\Programs\Python\Python312\Scripts"
+    "$env:LOCALAPPDATA\Programs\Python\Python311"
+    "$env:LOCALAPPDATA\Programs\Python\Python311\Scripts"
+  )
+  foreach ($p in $extraPaths) {
+    if ((Test-Path $p) -and ($env:Path -notlike "*$p*")) {
+      $env:Path += ";$p"
+    }
+  }
+}
+
 # === Phase 1: Detect ===
 Write-Phase "PHASE 1, detect prerequisites"
 
@@ -65,8 +97,7 @@ if ($missing.Count -gt 0) {
         Write-Host ("  Installing " + $m.name + "...")
         if ($m.wingetId) {
           winget install --id $m.wingetId --silent --accept-source-agreements --accept-package-agreements 2>&1 | Out-Null
-          # Refresh PATH for this session
-          $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+          Refresh-SessionPath
           if (Test-Command $m.cmd) {
             Write-Host ("  [OK] " + $m.name + " installed") -ForegroundColor Green
             $script:summary.installed += $m.name
@@ -108,7 +139,7 @@ if (-not $npmAvailable) {
       if ($reply -eq "y" -or $reply -eq "Y") {
         Write-Host ("  Installing " + $ai.name + " via npm...")
         npm install -g $ai.pkg 2>&1 | Out-Null
-        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+        Refresh-SessionPath
         if (Test-Command $ai.cmd) {
           Write-Host ("  [OK] " + $ai.name + " installed") -ForegroundColor Green
           $script:summary.installed += $ai.name
@@ -230,9 +261,50 @@ foreach ($repo in $repos) {
 # === Phase 6: Verify ===
 Write-Phase "PHASE 6, verify"
 
+# Final PATH refresh to pick up everything installed during this session
+Refresh-SessionPath
+
+Write-Host "  Verifying all tools are reachable on PATH..." -ForegroundColor Cyan
+Write-Host ""
+
+$allTools = @(
+  @{ name = "Git";          cmd = "git";        versionFlag = "--version" }
+  @{ name = "GitHub CLI";   cmd = "gh";         versionFlag = "--version" }
+  @{ name = "Python 3";     cmd = "python";     versionFlag = "--version" }
+  @{ name = "PowerShell 7"; cmd = "pwsh";       versionFlag = "--version" }
+  @{ name = "OpenSSH";      cmd = "ssh";        versionFlag = "-V" }
+  @{ name = "Node.js";      cmd = "node";       versionFlag = "--version" }
+  @{ name = "npm";          cmd = "npm";        versionFlag = "--version" }
+  @{ name = "VS Code";      cmd = "code";       versionFlag = "--version" }
+  @{ name = "Tailscale";    cmd = "tailscale";  versionFlag = "--version" }
+  @{ name = "cloudflared";  cmd = "cloudflared";versionFlag = "--version" }
+  @{ name = "Claude Code";  cmd = "claude";     versionFlag = "--version" }
+  @{ name = "OpenAI Codex"; cmd = "codex";      versionFlag = "--version" }
+)
+
+$notOnPath = @()
+foreach ($t in $allTools) {
+  if (Test-Command $t.cmd) {
+    $ver = & $t.cmd $t.versionFlag 2>&1 | Select-Object -First 1
+    Write-Host ("  [OK] " + $t.name + ": $ver") -ForegroundColor Green
+  } else {
+    $notOnPath += $t.name
+  }
+}
+
+if ($notOnPath.Count -gt 0) {
+  Write-Host ""
+  Write-Host "  Not on PATH (not installed or needs terminal restart):" -ForegroundColor Yellow
+  foreach ($n in $notOnPath) {
+    Write-Host ("    - $n") -ForegroundColor Yellow
+  }
+}
+
+# Smoke test: write to ai-journal if cloned
+Write-Host ""
 $aiJournal = Join-Path $githubFolder "ai-journal"
 if (Test-Path $aiJournal) {
-  Write-Host "  ai-journal cloned, smoke test write..."
+  Write-Host "  ai-journal smoke test..."
   $testFile = Join-Path $aiJournal "_startupjet-smoke-test.tmp"
   "smoke test $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" | Out-File $testFile -Encoding UTF8
   Remove-Item $testFile -Force
@@ -241,11 +313,7 @@ if (Test-Path $aiJournal) {
   Write-Host "  [skip] ai-journal not cloned, skipping smoke test" -ForegroundColor Yellow
 }
 
-# Git verify
-if (Test-Command "git") {
-  $v = git --version 2>&1
-  Write-Host "  [OK] git: $v" -ForegroundColor Green
-}
+# gh auth verify
 if (Test-Command "gh") {
   $ghWho = gh api user --jq '.login' 2>&1
   if ($LASTEXITCODE -eq 0) {
