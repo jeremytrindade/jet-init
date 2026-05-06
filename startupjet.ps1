@@ -171,29 +171,59 @@ if ($script:localAiWarnings.Count -gt 0 -and $script:localAiCapable) {
 
 Write-Host ""
 
+# --- Internet speed test ---
+Write-Host "  Network:" -ForegroundColor White
+$script:downloadMBps = 0
+
+try {
+  $speedTestUrl = "https://speed.cloudflare.com/__down?bytes=5000000"
+  $tempFile = Join-Path $env:TEMP "startupjet-speedtest.bin"
+  $sw = [System.Diagnostics.Stopwatch]::StartNew()
+  Invoke-WebRequest -Uri $speedTestUrl -OutFile $tempFile -UseBasicParsing -ErrorAction Stop | Out-Null
+  $sw.Stop()
+  $fileSizeBytes = (Get-Item $tempFile).Length
+  Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
+  $elapsedSec = $sw.Elapsed.TotalSeconds
+  if ($elapsedSec -gt 0 -and $fileSizeBytes -gt 0) {
+    $script:downloadMBps = [math]::Round(($fileSizeBytes / 1MB) / $elapsedSec, 1)
+    $mbps = [math]::Round(($fileSizeBytes * 8 / 1MB) / $elapsedSec, 0)
+    Write-Host "  Speed:     $script:downloadMBps MB/s ($mbps Mbps)" -ForegroundColor Green
+  }
+} catch {
+  Write-Host "  Speed:     could not test (offline or blocked)" -ForegroundColor Yellow
+  $script:downloadMBps = 5
+}
+
+if ($script:downloadMBps -lt 2) {
+  Write-Host "    Warning: slow connection. Large downloads (AI models) will take a long time." -ForegroundColor Yellow
+}
+
+Write-Host ""
+
 # --- Software catalog ---
+# downloadMB = approximate download size in MB for time estimation
 $catalog = @(
   # Dev tools
-  @{ id = 1;  name = "Git";            cmd = "git";        category = "dev";      method = "winget"; wingetId = "Git.Git";                   installed = $false; selected = $false }
-  @{ id = 2;  name = "GitHub CLI";     cmd = "gh";         category = "dev";      method = "winget"; wingetId = "GitHub.cli";                 installed = $false; selected = $false }
-  @{ id = 3;  name = "Python 3";       cmd = "python";     category = "dev";      method = "winget"; wingetId = "Python.Python.3.12";         installed = $false; selected = $false }
-  @{ id = 4;  name = "PowerShell 7";   cmd = "pwsh";       category = "dev";      method = "winget"; wingetId = "Microsoft.PowerShell";       installed = $false; selected = $false }
-  @{ id = 5;  name = "OpenSSH";        cmd = "ssh";        category = "dev";      method = "manual"; manual = "Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0"; installed = $false; selected = $false }
-  @{ id = 6;  name = "Node.js";        cmd = "node";       category = "dev";      method = "winget"; wingetId = "OpenJS.NodeJS";              installed = $false; selected = $false }
-  @{ id = 7;  name = "VS Code";        cmd = "code";       category = "dev";      method = "winget"; wingetId = "Microsoft.VisualStudioCode"; installed = $false; selected = $false }
+  @{ id = 1;  name = "Git";            cmd = "git";        category = "dev";      method = "winget"; wingetId = "Git.Git";                   installed = $false; selected = $false; downloadMB = 55;   installMin = 1 }
+  @{ id = 2;  name = "GitHub CLI";     cmd = "gh";         category = "dev";      method = "winget"; wingetId = "GitHub.cli";                 installed = $false; selected = $false; downloadMB = 15;   installMin = 0.5 }
+  @{ id = 3;  name = "Python 3";       cmd = "python";     category = "dev";      method = "winget"; wingetId = "Python.Python.3.12";         installed = $false; selected = $false; downloadMB = 30;   installMin = 1 }
+  @{ id = 4;  name = "PowerShell 7";   cmd = "pwsh";       category = "dev";      method = "winget"; wingetId = "Microsoft.PowerShell";       installed = $false; selected = $false; downloadMB = 100;  installMin = 1.5 }
+  @{ id = 5;  name = "OpenSSH";        cmd = "ssh";        category = "dev";      method = "manual"; manual = "Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0"; installed = $false; selected = $false; downloadMB = 5; installMin = 0.5 }
+  @{ id = 6;  name = "Node.js";        cmd = "node";       category = "dev";      method = "winget"; wingetId = "OpenJS.NodeJS";              installed = $false; selected = $false; downloadMB = 30;   installMin = 1 }
+  @{ id = 7;  name = "VS Code";        cmd = "code";       category = "dev";      method = "winget"; wingetId = "Microsoft.VisualStudioCode"; installed = $false; selected = $false; downloadMB = 95;   installMin = 1.5 }
   # Network
-  @{ id = 8;  name = "Tailscale";      cmd = "tailscale";  category = "network";  method = "winget"; wingetId = "tailscale.tailscale";        installed = $false; selected = $false }
-  @{ id = 9;  name = "cloudflared";    cmd = "cloudflared"; category = "network"; method = "winget"; wingetId = "Cloudflare.cloudflared";     installed = $false; selected = $false }
+  @{ id = 8;  name = "Tailscale";      cmd = "tailscale";  category = "network";  method = "winget"; wingetId = "tailscale.tailscale";        installed = $false; selected = $false; downloadMB = 40;   installMin = 1 }
+  @{ id = 9;  name = "cloudflared";    cmd = "cloudflared"; category = "network"; method = "winget"; wingetId = "Cloudflare.cloudflared";     installed = $false; selected = $false; downloadMB = 25;   installMin = 0.5 }
   # AI coding assistants
-  @{ id = 10; name = "Claude Code";    cmd = "claude";     category = "ai";       method = "npm";    pkg = "@anthropic-ai/claude-code";       installed = $false; selected = $false }
-  @{ id = 11; name = "OpenAI Codex";   cmd = "codex";      category = "ai";       method = "npm";    pkg = "@openai/codex";                   installed = $false; selected = $false }
+  @{ id = 10; name = "Claude Code";    cmd = "claude";     category = "ai";       method = "npm";    pkg = "@anthropic-ai/claude-code";       installed = $false; selected = $false; downloadMB = 50;   installMin = 1 }
+  @{ id = 11; name = "OpenAI Codex";   cmd = "codex";      category = "ai";       method = "npm";    pkg = "@openai/codex";                   installed = $false; selected = $false; downloadMB = 30;   installMin = 1 }
   # Local AI (GPU)
-  @{ id = 12; name = "Ollama";         cmd = "ollama";     category = "local-ai"; method = "winget"; wingetId = "Ollama.Ollama";              installed = $false; selected = $false }
-  @{ id = 13; name = "uv";             cmd = "uv";         category = "local-ai"; method = "winget"; wingetId = "astral-sh.uv";               installed = $false; selected = $false }
+  @{ id = 12; name = "Ollama";         cmd = "ollama";     category = "local-ai"; method = "winget"; wingetId = "Ollama.Ollama";              installed = $false; selected = $false; downloadMB = 110;  installMin = 1 }
+  @{ id = 13; name = "uv";             cmd = "uv";         category = "local-ai"; method = "winget"; wingetId = "astral-sh.uv";               installed = $false; selected = $false; downloadMB = 15;   installMin = 0.5 }
   # AI models (ollama pull)
-  @{ id = 14; name = "llama3.1:8b";    cmd = $null;        category = "model";    method = "ollama"; size = "4.9 GB";                         installed = $false; selected = $false }
-  @{ id = 15; name = "qwen2.5:7b";     cmd = $null;        category = "model";    method = "ollama"; size = "4.7 GB";                         installed = $false; selected = $false }
-  @{ id = 16; name = "mistral:7b";     cmd = $null;        category = "model";    method = "ollama"; size = "4.1 GB";                         installed = $false; selected = $false }
+  @{ id = 14; name = "llama3.1:8b";    cmd = $null;        category = "model";    method = "ollama"; size = "4.9 GB";                         installed = $false; selected = $false; downloadMB = 4900; installMin = 0 }
+  @{ id = 15; name = "qwen2.5:7b";     cmd = $null;        category = "model";    method = "ollama"; size = "4.7 GB";                         installed = $false; selected = $false; downloadMB = 4700; installMin = 0 }
+  @{ id = 16; name = "mistral:7b";     cmd = $null;        category = "model";    method = "ollama"; size = "4.1 GB";                         installed = $false; selected = $false; downloadMB = 4100; installMin = 0 }
 )
 
 # Check what is already installed
@@ -350,7 +380,7 @@ if ($notInstalled.Count -eq 0) {
     }
   }
 
-  # Show what will be installed
+  # Show what will be installed + time estimate
   $toInstall = @($catalog | Where-Object { $_.selected })
   if ($toInstall.Count -gt 0) {
     Write-Host ""
@@ -358,6 +388,36 @@ if ($notInstalled.Count -eq 0) {
     foreach ($item in $toInstall) {
       $sizeNote = if ($item.size) { " ($($item.size))" } else { "" }
       Write-Host ("    + $($item.name)$sizeNote") -ForegroundColor Green
+    }
+
+    # Time estimate
+    $totalDownloadMB = ($toInstall | ForEach-Object { $_.downloadMB } | Measure-Object -Sum).Sum
+    $totalInstallMin = ($toInstall | ForEach-Object { $_.installMin } | Measure-Object -Sum).Sum
+
+    if ($script:downloadMBps -gt 0) {
+      $downloadMin = [math]::Ceiling($totalDownloadMB / $script:downloadMBps / 60)
+      $totalMin = $downloadMin + [math]::Ceiling($totalInstallMin)
+      $totalDownloadDisplay = if ($totalDownloadMB -ge 1024) {
+        "$([math]::Round($totalDownloadMB / 1024, 1)) GB"
+      } else {
+        "$totalDownloadMB MB"
+      }
+
+      Write-Host ""
+      Write-Host "  Estimated time:" -ForegroundColor Cyan
+      Write-Host "    Total download: ~$totalDownloadDisplay" -ForegroundColor White
+      Write-Host "    At your speed ($script:downloadMBps MB/s): ~$downloadMin min download + ~$([math]::Ceiling($totalInstallMin)) min install" -ForegroundColor White
+
+      if ($totalMin -lt 5) {
+        Write-Host "    Total: ~$totalMin minutes. Quick one." -ForegroundColor Green
+      } elseif ($totalMin -lt 30) {
+        Write-Host "    Total: ~$totalMin minutes. Grab a coffee." -ForegroundColor Cyan
+      } elseif ($totalMin -lt 60) {
+        Write-Host "    Total: ~$totalMin minutes. Go for a walk." -ForegroundColor Yellow
+      } else {
+        $hours = [math]::Round($totalMin / 60, 1)
+        Write-Host "    Total: ~$hours hours. Do something else entirely." -ForegroundColor Yellow
+      }
     }
   }
 }
