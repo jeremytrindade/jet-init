@@ -611,7 +611,7 @@ Write-Host ""
 Write-Host "  Workspace configuration:" -ForegroundColor White
 
 # Load defaults from config/defaults.json if available
-$defaultWorkspace = "D:\claudeui"
+$defaultWorkspace = "D:\aijetlabs"
 $defaultGithubUser = "jeremytrindade"
 $defaultGitEmail = "jeremytrindade@gmail.com"
 $defaultsPath = Join-Path $PSScriptRoot "config\defaults.json"
