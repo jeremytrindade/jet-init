@@ -70,6 +70,108 @@ function Refresh-SessionPath {
 # =====================================================================
 Write-Phase "PHASE 1, scanning your system"
 
+# --- Hardware check ---
+Write-Host "  Hardware:" -ForegroundColor White
+
+# RAM
+$ramBytes = (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
+$ramGB = [math]::Round($ramBytes / 1GB, 1)
+$ramOk = $ramGB -ge 16
+$ramColor = if ($ramOk) { "Green" } else { "Yellow" }
+Write-Host ("  RAM:       $ramGB GB" + $(if ($ramOk) { "" } else { " (16 GB recommended for local AI)" })) -ForegroundColor $ramColor
+
+# GPU detection (try nvidia-smi first for accurate VRAM, fall back to WMI)
+$gpuName  = "none detected"
+$vramGB   = 0
+$gpuBrand = "unknown"
+
+$nvidiaSmi = Get-Command "nvidia-smi" -ErrorAction SilentlyContinue
+if ($nvidiaSmi) {
+  $gpuBrand = "nvidia"
+  try {
+    $nvsmiOut = nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>&1
+    if ($LASTEXITCODE -eq 0 -and $nvsmiOut) {
+      $parts = ($nvsmiOut -split ",") | ForEach-Object { $_.Trim() }
+      $gpuName = $parts[0]
+      if ($parts[1] -match "(\d+)") {
+        $vramGB = [math]::Round([int]$Matches[1] / 1024, 1)
+      }
+    }
+  } catch {}
+}
+
+if ($gpuName -eq "none detected") {
+  $gpus = @(Get-CimInstance Win32_VideoController | Where-Object { $_.AdapterRAM -gt 0 })
+  if ($gpus.Count -gt 0) {
+    $bestGpu = $gpus | Sort-Object AdapterRAM -Descending | Select-Object -First 1
+    $gpuName = $bestGpu.Name
+    # WMI AdapterRAM is uint32 (caps at 4 GB). Use it as a floor estimate.
+    $wmiVram = [math]::Round($bestGpu.AdapterRAM / 1GB, 1)
+    if ($wmiVram -gt 0) { $vramGB = $wmiVram }
+    if ($gpuName -match "NVIDIA") { $gpuBrand = "nvidia" }
+    elseif ($gpuName -match "AMD|Radeon") { $gpuBrand = "amd" }
+    elseif ($gpuName -match "Intel") { $gpuBrand = "intel" }
+  }
+}
+
+$gpuOk = $vramGB -ge 6
+$gpuColor = if ($gpuOk) { "Green" } elseif ($vramGB -gt 0) { "Yellow" } else { "Red" }
+$vramNote = if ($vramGB -gt 0) { "$vramGB GB VRAM" } else { "VRAM unknown" }
+Write-Host ("  GPU:       $gpuName ($vramNote)") -ForegroundColor $gpuColor
+
+# Disk space (check the drive where workspace will go, default D: then C:)
+$targetDrive = "C"
+if (Test-Path "D:\") { $targetDrive = "D" }
+$driveInfo = Get-PSDrive $targetDrive -ErrorAction SilentlyContinue
+$freeGB = 0
+if ($driveInfo) { $freeGB = [math]::Round($driveInfo.Free / 1GB, 1) }
+$diskOk = $freeGB -ge 20
+$diskColor = if ($diskOk) { "Green" } else { "Yellow" }
+Write-Host ("  Disk free: $freeGB GB on $($targetDrive):") -ForegroundColor $diskColor
+
+# Local AI verdict
+Write-Host ""
+$script:localAiCapable = $false
+$script:localAiWarnings = @()
+
+if ($vramGB -ge 8) {
+  Write-Host "  Local AI verdict: READY (GPU has $vramGB GB VRAM, 7B models will run well)" -ForegroundColor Green
+  $script:localAiCapable = $true
+} elseif ($vramGB -ge 6) {
+  Write-Host "  Local AI verdict: POSSIBLE (GPU has $vramGB GB VRAM, 7B models may be tight)" -ForegroundColor Yellow
+  $script:localAiCapable = $true
+  $script:localAiWarnings += "VRAM is on the low side for 7B models, expect slower inference"
+} elseif ($vramGB -gt 0) {
+  Write-Host "  Local AI verdict: NOT RECOMMENDED ($vramGB GB VRAM is below the 6 GB minimum for 7B models)" -ForegroundColor Red
+  $script:localAiWarnings += "GPU VRAM too low for 7B parameter models"
+} else {
+  Write-Host "  Local AI verdict: NO DEDICATED GPU DETECTED (local AI models need a GPU with 6+ GB VRAM)" -ForegroundColor Red
+  $script:localAiWarnings += "No dedicated GPU detected"
+}
+
+if ($ramGB -lt 16) {
+  $script:localAiWarnings += "RAM below 16 GB recommended minimum"
+}
+if ($freeGB -lt 20) {
+  $script:localAiWarnings += "Less than 20 GB free disk (models need ~15 GB)"
+}
+
+if ($gpuBrand -eq "amd") {
+  $script:localAiWarnings += "AMD GPU: Ollama ROCm support is partial, may need extra setup"
+}
+if ($gpuBrand -eq "intel") {
+  $script:localAiWarnings += "Intel GPU: Ollama support is experimental"
+}
+
+if ($script:localAiWarnings.Count -gt 0 -and $script:localAiCapable) {
+  foreach ($w in $script:localAiWarnings) {
+    Write-Host ("    Warning: $w") -ForegroundColor Yellow
+  }
+}
+
+Write-Host ""
+
+# --- Software catalog ---
 $catalog = @(
   # Dev tools
   @{ id = 1;  name = "Git";            cmd = "git";        category = "dev";      method = "winget"; wingetId = "Git.Git";                   installed = $false; selected = $false }
@@ -133,21 +235,64 @@ Write-Phase "PHASE 2, choose what to install"
 if ($notInstalled.Count -eq 0) {
   Write-Host "  Everything is already installed!" -ForegroundColor Green
 } else {
-  Write-Host ""
+  # Show hardware context for the choice
+  if (-not $script:localAiCapable) {
+    Write-Host ""
+    Write-Host "  Your hardware does NOT meet the requirements for local AI:" -ForegroundColor Red
+    foreach ($w in $script:localAiWarnings) {
+      Write-Host ("    - $w") -ForegroundColor Red
+    }
+    Write-Host "  Option [2] (skip local AI) is recommended for this PC." -ForegroundColor Yellow
+    Write-Host ""
+  } elseif ($script:localAiWarnings.Count -gt 0) {
+    Write-Host ""
+    Write-Host "  Your hardware can run local AI, with caveats:" -ForegroundColor Yellow
+    foreach ($w in $script:localAiWarnings) {
+      Write-Host ("    - $w") -ForegroundColor Yellow
+    }
+    Write-Host ""
+  }
+
+  $localAiCount = @($notInstalled | Where-Object { $_.category -eq "local-ai" -or $_.category -eq "model" }).Count
+  $nonLocalCount = $notInstalled.Count - $localAiCount
+
   Write-Host "  What would you like to install?" -ForegroundColor White
   Write-Host ""
-  Write-Host "    [1] Install everything ($($notInstalled.Count) items)" -ForegroundColor Cyan
-  Write-Host "    [2] Install everything EXCEPT local AI + models (skip Ollama, uv, models)" -ForegroundColor Cyan
+  Write-Host "    [1] Install everything ($($notInstalled.Count) items)" -ForegroundColor $(if ($script:localAiCapable) { "Cyan" } else { "Yellow" })
+  Write-Host "    [2] Install everything EXCEPT local AI + models ($nonLocalCount items)" -ForegroundColor Cyan
   Write-Host "    [3] Customize (pick from the list)" -ForegroundColor Cyan
   Write-Host "    [4] Skip installs (only authenticate + configure + clone)" -ForegroundColor Cyan
-  Write-Host ""
 
+  if (-not $script:localAiCapable) {
+    Write-Host ""
+    Write-Host "    Note: option [1] includes local AI that your hardware may not support." -ForegroundColor Yellow
+  }
+
+  Write-Host ""
   $mode = Read-Host "  Choose [1/2/3/4]"
 
   switch ($mode) {
     "1" {
-      foreach ($item in $notInstalled) { $item.selected = $true }
-      Write-Host "  Selected: everything ($($notInstalled.Count) items)" -ForegroundColor Green
+      if (-not $script:localAiCapable) {
+        Write-Host ""
+        Write-Host "  Warning: your hardware scan showed local AI may not work on this PC." -ForegroundColor Yellow
+        $confirm = Read-Host "  Install local AI anyway? [y/N]"
+        if ($confirm -eq "y" -or $confirm -eq "Y") {
+          foreach ($item in $notInstalled) { $item.selected = $true }
+          Write-Host "  Selected: everything ($($notInstalled.Count) items)" -ForegroundColor Green
+        } else {
+          foreach ($item in $notInstalled) {
+            if ($item.category -ne "local-ai" -and $item.category -ne "model") {
+              $item.selected = $true
+            }
+          }
+          $selectedCount = @($catalog | Where-Object { $_.selected }).Count
+          Write-Host "  Selected: $selectedCount items (local AI skipped per your choice)" -ForegroundColor Green
+        }
+      } else {
+        foreach ($item in $notInstalled) { $item.selected = $true }
+        Write-Host "  Selected: everything ($($notInstalled.Count) items)" -ForegroundColor Green
+      }
     }
     "2" {
       foreach ($item in $notInstalled) {
@@ -163,12 +308,14 @@ if ($notInstalled.Count -eq 0) {
       Write-Host "  Available to install (enter numbers separated by commas, or 'all'):" -ForegroundColor White
       Write-Host ""
 
+      $localAiLabel = if ($script:localAiCapable) { "Local AI (GPU: $gpuName, $vramGB GB VRAM)" } else { "Local AI (GPU: NOT RECOMMENDED for this PC)" }
+      $modelLabel   = if ($script:localAiCapable) { "AI models via Ollama (~13.7 GB total)" } else { "AI models via Ollama (NOT RECOMMENDED, see hardware scan)" }
       $categoryLabels = @{
         "dev"      = "Dev tools"
         "network"  = "Network"
         "ai"       = "AI coding assistants"
-        "local-ai" = "Local AI (GPU)"
-        "model"    = "AI models (downloaded via Ollama)"
+        "local-ai" = $localAiLabel
+        "model"    = $modelLabel
       }
       $lastCategory = ""
       foreach ($item in $notInstalled) {
