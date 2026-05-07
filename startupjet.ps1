@@ -357,6 +357,10 @@ function Choose-OllamaStorage {
   Set-OllamaModelsEnv -Path $target -Scope $scope
   Write-Host "  [OK] OLLAMA_MODELS = $target  ($scope scope)" -ForegroundColor Green
 
+  if ($script:isAdmin) {
+    Set-SharedFolderAcl -Path $target
+  }
+
   $localUserDir = Join-Path $env:USERPROFILE ".ollama\models"
   if ((Test-Path $localUserDir) -and ($localUserDir -ne $target)) {
     $localSize = 0
@@ -385,12 +389,43 @@ function Choose-OllamaStorage {
     foreach ($o in $otherUsers) {
       Write-Host ("    {0,-50}  {1,6:N1} GB   ({2})" -f $o.Path, $o.SizeGB, $o.Owner)
     }
-    Write-Host "  To consolidate, log into that account and run startupjet again, or as admin run:" -ForegroundColor DarkGray
-    Write-Host ("    robocopy `"<other-user-path>`" `"{0}`" /E /MOVE" -f $target) -ForegroundColor DarkGray
+    if ($script:isAdmin) {
+      $reply = Read-Host "  Move them all into $target as well? [Y/n]"
+      if ($reply -ne "n" -and $reply -ne "N") {
+        foreach ($o in $otherUsers) {
+          if (Test-Path $o.Path) {
+            Write-Host ""
+            Write-Host ("  Migrating {0} ..." -f $o.Owner) -ForegroundColor Cyan
+            Move-OllamaModelsTo -Source $o.Path -Destination $target
+          }
+        }
+      }
+    } else {
+      Write-Host "  To consolidate, re-run startupjet as admin (UAC) and the migration will run automatically." -ForegroundColor DarkGray
+    }
   }
 
   Restart-OllamaService
   return $target
+}
+
+function Set-SharedFolderAcl {
+  param([Parameter(Mandatory)] [string] $Path)
+  if (-not (Test-Path $Path)) {
+    New-Item -ItemType Directory -Path $Path -Force | Out-Null
+  }
+  try {
+    $acl  = Get-Acl $Path
+    $sid  = New-Object System.Security.Principal.SecurityIdentifier "S-1-5-32-545"  # BUILTIN\Users
+    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+      $sid, "Modify", "ContainerInherit,ObjectInherit", "None", "Allow"
+    )
+    $acl.SetAccessRule($rule)
+    Set-Acl -Path $Path -AclObject $acl
+    Write-Host "  [OK] $Path now grants Modify to BUILTIN\Users (cross-account access)" -ForegroundColor Green
+  } catch {
+    Write-Host "  [warn] Could not set shared ACL on ${Path}: $($_.Exception.Message)" -ForegroundColor Yellow
+  }
 }
 
 function Get-RecommendedModels {
