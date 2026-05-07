@@ -104,6 +104,23 @@ Fork this repo and edit the files in `config/`. The scripts read everything from
 
 The `config/` folder is the only thing you need to change. Everything else is the engine that reads it.
 
+### Setting your workspace path
+
+Edit `config/defaults.json` to set where repos are cloned and tools are configured:
+
+```json
+{
+  "workspacePath": "D:\\aijetlabs",
+  "workspacePathUnix": "~/workspace",
+  "githubUser": "your-username",
+  "gitEmail": "your@email.com"
+}
+```
+
+- `workspacePath` is used on Windows. Repos go into `<workspacePath>\github\`.
+- `workspacePathUnix` is used on macOS/Linux. `~` expands to your home directory.
+- During setup you can also override the path interactively when prompted.
+
 ## Requirements
 
 ### Windows
