@@ -24,7 +24,7 @@ After answering the initial questions (~2 min), you can walk away. Come back to 
 | Dev tools | Git, GitHub CLI, Python 3, PowerShell 7 (Windows), Node.js, OpenSSH, VS Code |
 | Network | Tailscale, cloudflared |
 | AI coding assistants | Claude Code, OpenAI Codex |
-| Local AI (GPU) | Ollama, uv, llama3.1:8b (4.9 GB), qwen2.5:7b (4.7 GB), mistral:7b (4.1 GB), deepseek-r1:14b (9 GB), qwen3:35b-a3b (20 GB, MoE) |
+| Local AI (GPU) | Ollama, uv, llama3.1:8b (4.9 GB), qwen2.5:7b (4.7 GB), mistral:7b (4.1 GB), deepseek-r1:14b (9 GB), qwen3:30b-a3b (18 GB, MoE) |
 | Larger models (16+ GB VRAM) | gemma4:31b (19 GB) |
 | Cloud models (Ollama cloud) | kimi-k2.6:cloud (no local GPU needed) |
 | Optional | Bitwarden CLI (vault integration for SSH keys) |

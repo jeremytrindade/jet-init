@@ -199,6 +199,200 @@ function Refresh-SessionPath {
   }
 }
 
+# === Ollama storage helpers (multi-disk + cross-account) ===
+
+function Get-FixedDisks {
+  Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction SilentlyContinue |
+    Where-Object { $_.Size -gt 0 } |
+    Sort-Object FreeSpace -Descending |
+    ForEach-Object {
+      [pscustomobject]@{
+        Drive  = $_.DeviceID
+        SizeGB = [math]::Round($_.Size / 1GB, 1)
+        FreeGB = [math]::Round($_.FreeSpace / 1GB, 1)
+        Volume = $_.VolumeName
+      }
+    }
+}
+
+function Get-OllamaModelDirs {
+  # Returns a list of detected Ollama model directories (env vars + each user profile).
+  $found = @()
+  $seen  = @{}
+
+  $envSources = @(
+    @{ Path = $env:OLLAMA_MODELS;                                                              Source = "process" },
+    @{ Path = [System.Environment]::GetEnvironmentVariable("OLLAMA_MODELS","User");            Source = "user-env" },
+    @{ Path = [System.Environment]::GetEnvironmentVariable("OLLAMA_MODELS","Machine");         Source = "machine-env" }
+  )
+  foreach ($e in $envSources) {
+    if ([string]::IsNullOrWhiteSpace($e.Path)) { continue }
+    $key = $e.Path.ToLowerInvariant()
+    if ($seen.ContainsKey($key)) { continue }
+    $seen[$key] = $true
+    $size = 0
+    if (Test-Path $e.Path) {
+      try { $size = (Get-ChildItem $e.Path -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum } catch {}
+    }
+    $found += [pscustomobject]@{
+      Path         = $e.Path
+      Owner        = "(env: $($e.Source))"
+      SizeGB       = [math]::Round($size / 1GB, 2)
+      Exists       = (Test-Path $e.Path)
+      IsCurrentEnv = $true
+    }
+  }
+
+  $usersRoot = "C:\Users"
+  if (Test-Path $usersRoot) {
+    foreach ($u in (Get-ChildItem $usersRoot -Directory -Force -ErrorAction SilentlyContinue)) {
+      $candidate = Join-Path $u.FullName ".ollama\models"
+      $key = $candidate.ToLowerInvariant()
+      if ($seen.ContainsKey($key)) { continue }
+      try {
+        if (Test-Path $candidate) {
+          $seen[$key] = $true
+          $size = 0
+          try { $size = (Get-ChildItem $candidate -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum } catch {}
+          $found += [pscustomobject]@{
+            Path         = $candidate
+            Owner        = $u.Name
+            SizeGB       = [math]::Round($size / 1GB, 2)
+            Exists       = $true
+            IsCurrentEnv = $false
+          }
+        }
+      } catch {}
+    }
+  }
+
+  return $found
+}
+
+function Set-OllamaModelsEnv {
+  param(
+    [Parameter(Mandatory)] [string] $Path,
+    [ValidateSet("User","Machine")] [string] $Scope = "User"
+  )
+  if (-not (Test-Path $Path)) {
+    New-Item -ItemType Directory -Path $Path -Force | Out-Null
+  }
+  [System.Environment]::SetEnvironmentVariable("OLLAMA_MODELS", $Path, $Scope)
+  $env:OLLAMA_MODELS = $Path
+}
+
+function Restart-OllamaService {
+  Get-Process -Name "ollama" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Seconds 1
+  if (Get-Command "ollama" -ErrorAction SilentlyContinue) {
+    Start-Process "ollama" -ArgumentList "serve" -WindowStyle Hidden -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+  }
+}
+
+function Move-OllamaModelsTo {
+  param([Parameter(Mandatory)] [string] $Source, [Parameter(Mandatory)] [string] $Destination)
+  if (-not (Test-Path $Source)) { return }
+  Write-Host "  Stopping Ollama before move..." -ForegroundColor DarkGray
+  Get-Process -Name "ollama" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Seconds 1
+  if (-not (Test-Path $Destination)) { New-Item -ItemType Directory -Path $Destination -Force | Out-Null }
+  Write-Host "  Moving models from $Source to $Destination (robocopy /E /MOVE)..." -ForegroundColor Yellow
+  & robocopy $Source $Destination /E /MOVE /NFL /NDL /NJH /NJS /NC /NS /NP | Out-Null
+  Write-Host "  [OK] Move complete." -ForegroundColor Green
+}
+
+function Choose-OllamaStorage {
+  # Walks the user through choosing where Ollama keeps models.
+  # Returns the chosen path (or $null if default kept).
+  $existing = @(Get-OllamaModelDirs | Where-Object { $_.Exists })
+  $disks    = @(Get-FixedDisks | Where-Object { $_.FreeGB -gt 20 })
+
+  Write-Host ""
+  Write-Host "  Local LLM storage" -ForegroundColor White
+
+  if ($disks.Count -le 1 -and $existing.Count -le 1) {
+    Write-Host "  Single disk and no cross-account models, keeping default ($env:USERPROFILE\.ollama\models)" -ForegroundColor DarkGray
+    return $null
+  }
+
+  if ($existing.Count -gt 0) {
+    Write-Host "  Existing model directories detected:" -ForegroundColor Cyan
+    foreach ($e in $existing) {
+      Write-Host ("    {0,-50}  {1,6:N1} GB   ({2})" -f $e.Path, $e.SizeGB, $e.Owner)
+    }
+  }
+  Write-Host ""
+  Write-Host "  Available fixed disks (>20 GB free):" -ForegroundColor Cyan
+  foreach ($d in $disks) {
+    Write-Host ("    {0}  {1,7:N0} GB free / {2,7:N0} GB total  {3}" -f $d.Drive, $d.FreeGB, $d.SizeGB, $d.Volume)
+  }
+  Write-Host ""
+
+  $rec = $disks | Where-Object { $_.Drive -ne "C:" } | Select-Object -First 1
+  if (-not $rec) { $rec = $disks | Select-Object -First 1 }
+  $recPath = "$($rec.Drive)\ollama\models"
+
+  Write-Host "  [1] Shared at $recPath  (cross-account, biggest free disk, recommended)" -ForegroundColor Green
+  Write-Host "  [2] Per-user default at $env:USERPROFILE\.ollama\models"
+  Write-Host "  [3] Custom path"
+  $reply = Read-Host "  Choice [1/2/3] (default 1)"
+
+  $target = switch ($reply) {
+    "2" { $null }
+    "3" { Read-Host "  Enter full path" }
+    default { $recPath }
+  }
+
+  if (-not $target) {
+    Write-Host "  Keeping default location (per-user)." -ForegroundColor DarkGray
+    return $null
+  }
+
+  $scope = if ($script:isAdmin) { "Machine" } else { "User" }
+  if ($scope -eq "User") {
+    Write-Host "  Setting OLLAMA_MODELS at User scope. Re-run startupjet as admin to make it Machine-wide (so other accounts on this PC see it too)." -ForegroundColor DarkYellow
+  }
+
+  Set-OllamaModelsEnv -Path $target -Scope $scope
+  Write-Host "  [OK] OLLAMA_MODELS = $target  ($scope scope)" -ForegroundColor Green
+
+  $localUserDir = Join-Path $env:USERPROFILE ".ollama\models"
+  if ((Test-Path $localUserDir) -and ($localUserDir -ne $target)) {
+    $localSize = 0
+    try { $localSize = (Get-ChildItem $localUserDir -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum } catch {}
+    if ($localSize -gt 100MB) {
+      $localGB = [math]::Round($localSize / 1GB, 2)
+      Write-Host ""
+      Write-Host ("  Found {0} GB of existing models at {1}" -f $localGB, $localUserDir) -ForegroundColor Cyan
+      $migrate = Read-Host "  Move them to $target ? [Y/n]"
+      if ($migrate -ne "n" -and $migrate -ne "N") {
+        Move-OllamaModelsTo -Source $localUserDir -Destination $target
+      }
+    }
+  }
+
+  $otherUsers = @($existing | Where-Object {
+    $_.Owner -notmatch "^\(env:" -and
+    $_.Owner -ne $env:USERNAME -and
+    $_.Path  -ne $target -and
+    (-not (Test-Path $_.Path -ErrorAction SilentlyContinue) -or
+     $_.Path.ToLowerInvariant() -ne $target.ToLowerInvariant())
+  })
+  if ($otherUsers.Count -gt 0) {
+    Write-Host ""
+    Write-Host "  Cross-account model directories also found:" -ForegroundColor Cyan
+    foreach ($o in $otherUsers) {
+      Write-Host ("    {0,-50}  {1,6:N1} GB   ({2})" -f $o.Path, $o.SizeGB, $o.Owner)
+    }
+    Write-Host "  To consolidate, log into that account and run startupjet again, or as admin run:" -ForegroundColor DarkGray
+    Write-Host ("    robocopy `"<other-user-path>`" `"{0}`" /E /MOVE" -f $target) -ForegroundColor DarkGray
+  }
+
+  Restart-OllamaService
+  return $target
+}
+
 function Get-RecommendedModels {
   param($models, [double]$vram, [double]$ram, [double]$diskFree)
   $scored = @()
@@ -991,6 +1185,14 @@ $authTailscale = ($reply -eq "y" -or $reply -eq "Y")
 
 $reply = Read-Host "  Authenticate cloudflared? [y/N]"
 $authCloudflare = ($reply -eq "y" -or $reply -eq "Y")
+
+# --- Local LLM storage (only if Ollama is involved) ---
+$ollamaInvolved = (Test-Command "ollama") -or
+                  ($catalog | Where-Object { $_.name -eq "Ollama" -and $_.selected }) -or
+                  ($catalog | Where-Object { $_.method -eq "ollama" -and $_.selected })
+if ($ollamaInvolved) {
+  $script:ollamaModelsPath = Choose-OllamaStorage
+}
 
 # --- SSH key ---
 $generateSshKey = $false

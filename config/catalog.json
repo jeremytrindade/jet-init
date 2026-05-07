@@ -117,7 +117,7 @@
     { "id": 16, "name": "qwen2.5:7b",      "category": "model",       "size": "4.7 GB",  "downloadMB": 4700,  "minVRAM": 4,  "recVRAM": 6,  "minRAM": 8,  "quality": 7, "desc": "multilingual, good at coding" },
     { "id": 17, "name": "mistral:7b",      "category": "model",       "size": "4.1 GB",  "downloadMB": 4100,  "minVRAM": 4,  "recVRAM": 6,  "minRAM": 8,  "quality": 6, "desc": "fast general purpose, small footprint" },
     { "id": 18, "name": "deepseek-r1:14b", "category": "model",       "size": "9.0 GB",  "downloadMB": 9000,  "minVRAM": 8,  "recVRAM": 12, "minRAM": 16, "quality": 8, "desc": "reasoning specialist, chain-of-thought" },
-    { "id": 19, "name": "qwen3:35b-a3b",   "category": "model",       "size": "20 GB",   "downloadMB": 20000, "minVRAM": 4,  "recVRAM": 8,  "minRAM": 24, "quality": 9, "desc": "MoE 35B total / 3B active, top quality, fast inference" },
+    { "id": 19, "name": "qwen3:30b-a3b",   "category": "model",       "size": "18 GB",   "downloadMB": 18000, "minVRAM": 4,  "recVRAM": 8,  "minRAM": 24, "quality": 9, "desc": "MoE 30B total / 3B active, top quality, fast inference" },
     { "id": 20, "name": "gemma4:31b",      "category": "model-lg",    "size": "19 GB",   "downloadMB": 19000, "minVRAM": 16, "recVRAM": 24, "minRAM": 32, "quality": 9, "desc": "large dense model, top quality, needs big GPU" },
     { "id": 21, "name": "kimi-k2.6:cloud", "category": "model-cloud", "size": "cloud",   "downloadMB": 10,    "minVRAM": 0,  "recVRAM": 0,  "minRAM": 0,  "quality": 8, "desc": "cloud-hosted, no local GPU needed" }
   ]
