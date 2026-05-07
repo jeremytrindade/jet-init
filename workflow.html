@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>startupjet workflow map</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #23273a;
+      --border: #2e3347;
+      --accent: #2dd4bf;
+      --accent2: #5eead4;
+      --text: #e8eaf6;
+      --muted: #8c92a4;
+      --code-bg: #0a0c12;
+      --green: #43a047;
+      --orange: #f57c00;
+      --red: #ef5350;
+      --blue: #42a5f5;
+      --purple: #ab47bc;
+      --yellow: #fdd835;
+    }
+    [data-theme="light"] {
+      --bg: #f5f7fa;
+      --surface: #ffffff;
+      --surface2: #eef1f6;
+      --border: #d1d5db;
+      --accent: #0d9488;
+      --accent2: #0f766e;
+      --text: #1e293b;
+      --muted: #64748b;
+      --code-bg: #f1f5f9;
+      --green: #16a34a;
+      --orange: #ea580c;
+      --red: #dc2626;
+      --blue: #2563eb;
+      --purple: #7c3aed;
+      --yellow: #ca8a04;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      line-height: 1.6;
+      padding: 24px;
+    }
+    a { color: var(--accent2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .theme-toggle {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 100;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    .theme-toggle:hover { border-color: var(--accent); }
+
+    .container { max-width: 1100px; margin: 0 auto; }
+
+    header {
+      text-align: center;
+      padding: 24px 0 32px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 32px;
+    }
+    header h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; }
+    header h1 span { color: var(--accent); }
+    header p { color: var(--muted); font-size: 15px; margin-top: 8px; }
+    header nav { margin-top: 12px; font-size: 14px; }
+    header nav a { margin: 0 10px; }
+
+    /* Phase flow */
+    .flow { display: flex; flex-direction: column; gap: 0; position: relative; }
+
+    .phase-row {
+      display: grid;
+      grid-template-columns: 120px 1fr 300px;
+      gap: 0;
+      align-items: stretch;
+      min-height: 140px;
+    }
+
+    .phase-label {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding-top: 24px;
+      position: relative;
+    }
+    .phase-num {
+      background: var(--accent);
+      color: #000;
+      font-weight: 800;
+      font-size: 14px;
+      width: 36px;
+      height: 36px;
+      line-height: 36px;
+      text-align: center;
+      border-radius: 50%;
+      z-index: 2;
+    }
+    .phase-name {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--muted);
+      margin-top: 6px;
+      text-align: center;
+    }
+    .phase-label::after {
+      content: '';
+      position: absolute;
+      top: 60px;
+      bottom: -1px;
+      left: 50%;
+      width: 2px;
+      background: var(--border);
+      z-index: 1;
+    }
+    .phase-row:last-child .phase-label::after { display: none; }
+
+    .phase-content {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin: 8px 0;
+      position: relative;
+    }
+    .phase-content h3 { font-size: 16px; font-weight: 700; margin-bottom: 10px; }
+    .phase-content ul {
+      list-style: none;
+      padding: 0;
+    }
+    .phase-content li {
+      font-size: 13px;
+      padding: 3px 0;
+      color: var(--muted);
+      position: relative;
+      padding-left: 18px;
+    }
+    .phase-content li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 10px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--border);
+    }
+    .phase-content li.data::before { background: var(--blue); }
+    .phase-content li.action::before { background: var(--green); }
+    .phase-content li.decision::before { background: var(--orange); }
+    .phase-content li.user::before { background: var(--purple); }
+    .phase-content li.new::before { background: var(--accent); }
+
+    .phase-notes {
+      padding: 16px 20px;
+      margin: 8px 0;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--orange);
+      border-radius: 8px;
+      font-size: 13px;
+    }
+    .phase-notes strong {
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--orange);
+      margin-bottom: 6px;
+    }
+    .phase-notes ul {
+      list-style: none;
+      padding: 0;
+    }
+    .phase-notes li {
+      color: var(--muted);
+      padding: 2px 0;
+      padding-left: 14px;
+      position: relative;
+    }
+    .phase-notes li::before {
+      content: '?';
+      position: absolute;
+      left: 0;
+      color: var(--orange);
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    /* Barrier line */
+    .barrier {
+      display: grid;
+      grid-template-columns: 120px 1fr 300px;
+      gap: 0;
+    }
+    .barrier-line {
+      grid-column: 2 / 4;
+      border: 2px dashed var(--green);
+      border-radius: 6px;
+      padding: 8px 16px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--green);
+      margin: 4px 0;
+    }
+
+    /* Legend */
+    .legend {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      padding: 16px 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 24px;
+      font-size: 13px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+    }
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    /* Summary section */
+    .summary {
+      margin-top: 32px;
+      padding-top: 32px;
+      border-top: 1px solid var(--border);
+    }
+    .summary h2 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--border);
+    }
+    .idea-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 14px;
+    }
+    .idea {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+    }
+    .idea.low { border-left: 4px solid var(--blue); }
+    .idea.medium { border-left: 4px solid var(--orange); }
+    .idea.high { border-left: 4px solid var(--red); }
+    .idea .priority {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    .idea.low .priority { color: var(--blue); }
+    .idea.medium .priority { color: var(--orange); }
+    .idea.high .priority { color: var(--red); }
+    .idea h4 { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+    .idea p { font-size: 13px; color: var(--muted); }
+
+    /* Data flow */
+    .data-flow {
+      margin-top: 32px;
+      padding-top: 32px;
+      border-top: 1px solid var(--border);
+    }
+    .data-flow h2 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--border);
+    }
+    .flow-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .flow-table th {
+      text-align: left;
+      padding: 10px 14px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--muted);
+    }
+    .flow-table td {
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      vertical-align: top;
+    }
+    .flow-table code {
+      font-size: 12px;
+      background: var(--surface2);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 24px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 36px;
+    }
+
+    @media (max-width: 800px) {
+      .phase-row { grid-template-columns: 1fr; }
+      .phase-label {
+        flex-direction: row;
+        gap: 10px;
+        padding: 8px 0 0;
+        justify-content: flex-start;
+      }
+      .phase-label::after { display: none; }
+      .phase-notes { margin-top: 0; }
+      .barrier { grid-template-columns: 1fr; }
+      .barrier-line { grid-column: 1; }
+    }
+  </style>
+</head>
+<body>
+  <button class="theme-toggle" id="theme-toggle">Light</button>
+
+  <div class="container">
+    <header>
+      <h1>startup<span>jet</span> workflow map</h1>
+      <p>Visual breakdown of every phase, decision point, and data dependency. Notes on what could be improved.</p>
+      <nav>
+        <a href="index.html">Home</a>
+        <a href="https://github.com/jeremytrindade/startupjet">GitHub</a>
+        <a href="README.md">README</a>
+      </nav>
+    </header>
+
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div> Data collected</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Action taken</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div> Decision point</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div> User input</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div> New / recently added</div>
+    </div>
+
+    <div class="flow">
+
+      <!-- Phase 1 -->
+      <div class="phase-row">
+        <div class="phase-label">
+          <div class="phase-num">1</div>
+          <div class="phase-name">Scan</div>
+        </div>
+        <div class="phase-content">
+          <h3>Hardware + Software Detection</h3>
+          <ul>
+            <li class="data">RAM via <code>Win32_ComputerSystem</code> (TotalPhysicalMemory)</li>
+            <li class="data">GPU via <code>nvidia-smi</code> (accurate VRAM), WMI fallback</li>
+            <li class="data">Disk free space on target drive (D: if exists, else C:)</li>
+            <li class="decision">Local AI verdict: READY / POSSIBLE / NOT RECOMMENDED / NO GPU</li>
+            <li class="data">Internet speed via Cloudflare 5 MB download</li>
+            <li class="action">Scan 20 items in software catalog (winget, npm, ollama)</li>
+            <li class="data">Report: X installed, Y available</li>
+          </ul>
+        </div>
+        <div class="phase-notes">
+          <strong>Could improve</strong>
+          <ul>
+            <li><s>WMI AdapterRAM DWORD cap</s>: done, falls back to registry qwMemorySize (64-bit)</li>
+            <li><s>Cross-platform</s>: done, startupjet.sh detects macOS (system_profiler) and Linux (nvidia-smi/lspci)</li>
+            <li>AMD ROCm detection: could probe <code>rocminfo</code> or <code>hipconfig</code> to confirm ROCm works</li>
+            <li>Multi-GPU: only picks the best GPU, does not report if a second GPU exists</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Phase 2 -->
+      <div class="phase-row">
+        <div class="phase-label">
+          <div class="phase-num">2</div>
+          <div class="phase-name">Choose</div>
+        </div>
+        <div class="phase-content">
+          <h3>All Questions Upfront</h3>
+          <ul>
+            <li class="new">Preset profiles: Minimal dev, Developer, AI workstation, or Custom</li>
+            <li class="new">Model recommendation engine: score all models by VRAM, RAM, disk, show top 3</li>
+            <li class="user">If Custom: install mode [1] recommended, [2] skip AI, [3] customize, [4] skip, [5] all</li>
+            <li class="user">Install scope: current user vs all users (winget --scope)</li>
+            <li class="user">Auth choices: GitHub CLI, Tailscale, cloudflared</li>
+            <li class="user">Generate SSH key? (if none exists at ~/.ssh/id_ed25519)</li>
+            <li class="user">Apply Windows dev settings? (file extensions, hidden files, dev mode)</li>
+            <li class="user">Install VS Code extensions? (from config/vscode-extensions.json)</li>
+            <li class="user">Workspace path, GitHub username, git email (with defaults from config/defaults.json)</li>
+            <li class="action">Time estimate based on selections + measured download speed</li>
+          </ul>
+        </div>
+        <div class="phase-notes">
+          <strong>Could improve</strong>
+          <ul>
+            <li>Preset profiles: implemented (Minimal dev, Developer, AI workstation). Reduces Phase 2 to one question.</li>
+            <li>A config/presets.json file so users can define their own presets</li>
+            <li>Model recommendations could show estimated inference speed (tokens/sec) per model/hardware combo</li>
+            <li>Show disk space impact of each selection in real-time as user picks</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Phase 3 -->
+      <div class="phase-row">
+        <div class="phase-label">
+          <div class="phase-num">3</div>
+          <div class="phase-name">Auth</div>
+        </div>
+        <div class="phase-content">
+          <h3>Interactive Authentication</h3>
+          <ul>
+            <li class="decision">If gh not yet installed but selected: defer auth to after install</li>
+            <li class="user">gh auth login (opens browser)</li>
+            <li class="user">tailscale up (opens browser, if chosen)</li>
+            <li class="user">cloudflared tunnel login (opens browser, if chosen)</li>
+          </ul>
+        </div>
+        <div class="phase-notes">
+          <strong>Could improve</strong>
+          <ul>
+            <li>Auth verification after each login (currently only gh gets checked via auth status)</li>
+            <li>Tailscale and cloudflared auth status checks before prompting (avoid re-auth if already logged in)</li>
+            <li>Admin elevation now offered when machine scope or dev mode is selected (implemented)</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Phase 4 -->
+      <div class="phase-row">
+        <div class="phase-label">
+          <div class="phase-num">4</div>
+          <div class="phase-name">Configure</div>
+        </div>
+        <div class="phase-content">
+          <h3>Git, SSH, Dev Settings, Config Save</h3>
+          <ul>
+            <li class="action">git config (user.name, user.email) with --global or --system per scope</li>
+            <li class="action">ssh-keygen -t ed25519 (if chosen and key missing)</li>
+            <li class="action">gh ssh-key add (auto-upload to GitHub if gh authenticated)</li>
+            <li class="action">Registry edits: HideFileExt=0, Hidden=1, DevMode (needs admin)</li>
+            <li class="action">Save all choices to config/user-config.json</li>
+          </ul>
+        </div>
+        <div class="phase-notes">
+          <strong>Could improve</strong>
+          <ul>
+            <li><s>Vault integration</s>: done, Bitwarden CLI restores SSH keys from vault before generating new ones</li>
+            <li><s>Admin check</s>: done, detects privileges before attempting dev mode registry writes</li>
+            <li>Back up existing git config before overwriting (in case user has custom aliases, etc.)</li>
+            <li>SSH config file (~/.ssh/config) auto-generation for common hosts</li>
+            <li>GPG key setup alongside SSH key</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Barrier -->
+      <div class="barrier">
+        <div></div>
+        <div class="barrier-line">NO MORE USER INPUT AFTER THIS POINT</div>
+      </div>
+
+      <!-- Phase 5 -->
+      <div class="phase-row">
+        <div class="phase-label">
+          <div class="phase-num">5</div>
+          <div class="phase-name">Install</div>
+        </div>
+        <div class="phase-content">
+          <h3>Unattended Installation</h3>
+          <ul>
+            <li class="action">5a: winget install (Git, gh, Python, pwsh, VS Code, Tailscale, cloudflared, Node, Ollama, uv)</li>
+            <li class="action">5b: manual installs (OpenSSH via Add-WindowsCapability)</li>
+            <li class="action">5c: npm install -g (Claude Code, OpenAI Codex)</li>
+            <li class="action">5d: ollama pull (recommended or all selected models)</li>
+            <li class="action">5e: deferred auth (gh, tailscale, cloudflared installed above)</li>
+            <li class="action">5f: deferred git config (if git was just installed)</li>
+            <li class="action">5g: deferred SSH key add to GitHub</li>
+            <li class="action">5h: VS Code extensions via <code>code --install-extension</code></li>
+            <li class="data">Progress saved to config/progress.json after each item</li>
+            <li class="action">Refresh-SessionPath after each group (picks up new PATH entries)</li>
+          </ul>
+        </div>
+        <div class="phase-notes">
+          <strong>Could improve</strong>
+          <ul>
+            <li>Parallel installs: winget items could run concurrently (winget supports it but may conflict)</li>
+            <li>Retry logic: if a winget install fails, retry once before marking as failed</li>
+            <li>Model pull progress: ollama pull shows progress but it is captured in transcript, not displayed live</li>
+            <li>Validate installed version matches expected minimum (e.g. Python 3.10+)</li>
+            <li>Post-install PATH validation: check that each tool's binary is actually reachable after Refresh-SessionPath</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Phase 5.5 -->
+      <div class="phase-row">
+        <div class="phase-label">
+          <div class="phase-num" style="font-size:10px">5.5</div>
+          <div class="phase-name">Dotfiles</div>
+        </div>
+        <div class="phase-content">
+          <h3>Dotfiles Clone + Link</h3>
+          <ul>
+            <li class="new">Read config/dotfiles.json for repo URL and file mappings</li>
+            <li class="decision">If repo is empty string: skip entire phase</li>
+            <li class="action">git clone dotfiles repo to ~/.dotfiles (or git pull if exists)</li>
+            <li class="action">Windows: copy files to target paths (with .backup of existing)</li>
+            <li class="action">macOS/Linux: symlink files to target paths (with .backup of existing)</li>
+          </ul>
+        </div>
+        <div class="phase-notes">
+          <strong>Could improve</strong>
+          <ul>
+            <li>Stow-compatible layout for users who already use GNU Stow</li>
+            <li>Per-OS file mappings (e.g. different shell configs for macOS vs Linux)</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Phase 6 -->
+      <div class="phase-row">
+        <div class="phase-label">
+          <div class="phase-num">6</div>
+          <div class="phase-name">Clone</div>
+        </div>
+        <div class="phase-content">
+          <h3>Clone Repos from Config</h3>
+          <ul>
+            <li class="data">Read config/repos.json for repo list</li>
+            <li class="decision">If repo dir already exists: skip</li>
+            <li class="action">git clone each repo to <code>&lt;workspace&gt;/github/&lt;name&gt;</code></li>
+            <li class="decision">If clone fails + required=true: report FAIL. If optional: skip with warning</li>
+            <li class="new">Shallow clone: repos with <code>"shallow": true</code> use <code>--depth 1</code></li>
+            <li class="new">Post-clone deps: detects package.json / requirements.txt, runs npm install / pip install</li>
+          </ul>
+        </div>
+        <div class="phase-notes">
+          <strong>Could improve</strong>
+          <ul>
+            <li>SSH vs HTTPS clone: detect if SSH key exists + gh auth, prefer SSH for push access</li>
+            <li>Branch checkout: allow repos.json to specify a branch to checkout after clone</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Phase 7 -->
+      <div class="phase-row">
+        <div class="phase-label">
+          <div class="phase-num">7</div>
+          <div class="phase-name">Verify</div>
+        </div>
+        <div class="phase-content">
+          <h3>PATH Check + Functional Tests + Summary</h3>
+          <ul>
+            <li class="action">Check every tool is on PATH with --version output</li>
+            <li class="data">SSH key existence check</li>
+            <li class="action">Smoke test: write + delete temp file in ai-journal</li>
+            <li class="data">gh api user to confirm authenticated identity</li>
+            <li class="new">Functional: Python import test (json, os, sys)</li>
+            <li class="new">Functional: Node.js eval test</li>
+            <li class="new">Functional: Ollama inference test with response timing</li>
+            <li class="new">Functional: git config identity check</li>
+            <li class="data">Summary: installed, already had, failed, authenticated, repos, time elapsed</li>
+            <li class="action">Clean up progress.json if no failures (or keep for resume)</li>
+            <li class="data">Print canonical AI prompt for next step</li>
+          </ul>
+        </div>
+        <div class="phase-notes">
+          <strong>Could improve</strong>
+          <ul>
+            <li><s>Functional tests</s>: done, Python import test, Node.js test, Ollama inference with timing, git identity check</li>
+            <li>Smoke test could try git push (not just write) to confirm full auth flow</li>
+            <li>Generate a machine profile JSON (hardware + software + config) for future reference</li>
+            <li>Email or webhook notification when setup completes (useful for unattended runs)</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Data flow table -->
+    <div class="data-flow">
+      <h2>Data flow between phases</h2>
+      <table class="flow-table">
+        <thead>
+          <tr>
+            <th>Variable</th>
+            <th>Set in</th>
+            <th>Used in</th>
+            <th>Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>$vramGB</code></td>
+            <td>Phase 1</td>
+            <td>Phase 1 (verdict), Phase 2 (recommendations)</td>
+            <td>GPU VRAM in GB, drives model selection</td>
+          </tr>
+          <tr>
+            <td><code>$ramGB</code></td>
+            <td>Phase 1</td>
+            <td>Phase 2 (recommendations)</td>
+            <td>System RAM in GB, filters large MoE models</td>
+          </tr>
+          <tr>
+            <td><code>$freeGB</code></td>
+            <td>Phase 1</td>
+            <td>Phase 2 (recommendations)</td>
+            <td>Disk free space, filters models by download size</td>
+          </tr>
+          <tr>
+            <td><code>$downloadMBps</code></td>
+            <td>Phase 1</td>
+            <td>Phase 2 (time estimate)</td>
+            <td>Measured download speed for ETA calculation</td>
+          </tr>
+          <tr>
+            <td><code>$localAiCapable</code></td>
+            <td>Phase 1</td>
+            <td>Phase 2 (UI, warnings, recommendations)</td>
+            <td>Boolean: can this PC run local AI at all?</td>
+          </tr>
+          <tr>
+            <td><code>$recommendedModels</code></td>
+            <td>Phase 2</td>
+            <td>Phase 2 (option [1], [3] listing)</td>
+            <td>Top 3 models ranked by hardware fit</td>
+          </tr>
+          <tr>
+            <td><code>$catalog[].selected</code></td>
+            <td>Phase 2</td>
+            <td>Phase 5 (install loop)</td>
+            <td>Which items the user chose to install</td>
+          </tr>
+          <tr>
+            <td><code>$installScope</code></td>
+            <td>Phase 2</td>
+            <td>Phase 4 (git config), Phase 5 (winget --scope)</td>
+            <td>"user" or "machine"</td>
+          </tr>
+          <tr>
+            <td><code>$workspacePath</code></td>
+            <td>Phase 2</td>
+            <td>Phase 4 (config save), Phase 6 (clone target)</td>
+            <td>Root workspace directory</td>
+          </tr>
+          <tr>
+            <td><code>config/progress.json</code></td>
+            <td>Phase 5</td>
+            <td>Phase 1 (resume check), Phase 7 (cleanup)</td>
+            <td>Tracks completed installs for crash resume</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Improvement ideas -->
+    <div class="summary">
+      <h2>Improvement ideas (prioritized)</h2>
+      <div class="idea-grid">
+        <div class="idea low">
+          <div class="priority">Done</div>
+          <h4>Cross-platform (macOS/Linux)</h4>
+          <p>startupjet.sh reads config/catalog.json for brew/apt installs. Same 7-phase flow, same config files.</p>
+        </div>
+        <div class="idea low">
+          <div class="priority">Done</div>
+          <h4>Dotfiles management</h4>
+          <p>config/dotfiles.json defines repo + file mappings. Symlinks on macOS/Linux, copies on Windows. Backups existing files.</p>
+        </div>
+        <div class="idea low">
+          <div class="priority">Done</div>
+          <h4>Vault integration (Bitwarden)</h4>
+          <p>Bitwarden CLI restores existing SSH keys from vault. Falls back to generating new keys if vault unavailable.</p>
+        </div>
+        <div class="idea low">
+          <div class="priority">Done</div>
+          <h4>Functional tests</h4>
+          <p>Phase 7: Python import test, Node.js eval, Ollama inference with timing, git identity check.</p>
+        </div>
+        <div class="idea low">
+          <div class="priority">Done</div>
+          <h4>Declarative config (catalog.json)</h4>
+          <p>Platform-aware tool catalog with install methods per OS. Scripts read from JSON, not hardcoded.</p>
+        </div>
+        <div class="idea low">
+          <div class="priority">Done</div>
+          <h4>Preset profiles</h4>
+          <p>Three presets (Minimal dev, Developer, AI workstation). Custom mode preserves the full flow.</p>
+        </div>
+        <div class="idea low">
+          <div class="priority">Done</div>
+          <h4>Post-clone dependency install</h4>
+          <p>Detects package.json and requirements.txt in cloned repos, runs npm install / pip install.</p>
+        </div>
+        <div class="idea low">
+          <div class="priority">Done</div>
+          <h4>Shallow clone option</h4>
+          <p>repos.json supports <code>"shallow": true</code> per repo for faster setup.</p>
+        </div>
+        <div class="idea low">
+          <div class="priority">Done</div>
+          <h4>SSH-preferred cloning</h4>
+          <p>Detects SSH key + gh auth status. Uses git@github.com: URLs for push access, falls back to HTTPS.</p>
+        </div>
+        <div class="idea medium">
+          <div class="priority">Medium impact</div>
+          <h4>Machine profile export</h4>
+          <p>Generate a JSON snapshot of hardware + software + config after setup.</p>
+        </div>
+        <div class="idea low">
+          <div class="priority">Low priority</div>
+          <h4>Multi-GPU awareness</h4>
+          <p>Detect and report all GPUs, not just the best one.</p>
+        </div>
+        <div class="idea low">
+          <div class="priority">Low priority</div>
+          <h4>Completion notification</h4>
+          <p>Webhook, email, or desktop toast when setup finishes.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>
+    <p>startupjet workflow map. Generated 2026-05-06.</p>
+    <p style="margin-top: 6px;"><a href="index.html">Back to startupjet home</a></p>
+  </footer>
+
+  <script>
+    const toggle = document.getElementById('theme-toggle');
+    const saved = localStorage.getItem('startupjet-theme');
+    if (saved) {
+      document.documentElement.setAttribute('data-theme', saved);
+      toggle.textContent = saved === 'light' ? 'Dark' : 'Light';
+    } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+      document.documentElement.setAttribute('data-theme', 'light');
+      toggle.textContent = 'Dark';
+    }
+    toggle.addEventListener('click', function() {
+      const current = document.documentElement.getAttribute('data-theme');
+      const next = current === 'light' ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', next === 'dark' ? '' : next);
+      if (next === 'dark') document.documentElement.removeAttribute('data-theme');
+      localStorage.setItem('startupjet-theme', next);
+      toggle.textContent = next === 'light' ? 'Dark' : 'Light';
+    });
+  </script>
+</body>
+</html>

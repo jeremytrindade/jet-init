@@ -240,15 +240,17 @@
 
   <header class="hero">
     <h1>startup<span>jet</span></h1>
-    <p class="tagline">Answer a few questions, walk away, come back to a fully configured PC.</p>
+    <p class="tagline">Answer a few questions, walk away, come back to a fully configured PC. Any OS.</p>
     <div class="badges">
       <span class="badge mit">MIT</span>
-      <span class="badge">Windows 10/11</span>
-      <span class="badge">PowerShell</span>
-      <span class="badge">winget</span>
+      <span class="badge">Windows</span>
+      <span class="badge">macOS</span>
+      <span class="badge">Linux</span>
+      <span class="badge">winget / brew / apt</span>
     </div>
     <div class="links">
       <a href="https://github.com/jeremytrindade/startupjet">GitHub</a>
+      <a href="workflow.html">Workflow Map</a>
       <a href="README.md">README</a>
       <a href="LICENSE">License</a>
     </div>
@@ -261,12 +263,12 @@
         <div class="phase-card">
           <div class="phase-num">1</div>
           <h3>Scan</h3>
-          <p>Silently scans for 19 tools across dev, network, AI coding, and local AI categories. Reports what is installed vs missing.</p>
+          <p>Detects OS, GPU, RAM, disk, runs speed test. Scans 14 tools across dev, network, AI, and local AI. Reports installed vs missing.</p>
         </div>
         <div class="phase-card">
           <div class="phase-num">2</div>
           <h3>Choose</h3>
-          <p>All questions upfront: install mode, install scope (user or all), auth, SSH key, dev settings, VS Code extensions, workspace config. After this, no more questions.</p>
+          <p>Pick a preset (Minimal dev, Developer, AI workstation) or Custom. Presets skip all questions. Custom lets you pick everything yourself.</p>
         </div>
         <div class="phase-card">
           <div class="phase-num">3</div>
@@ -276,12 +278,12 @@
         <div class="phase-card">
           <div class="phase-num">4</div>
           <h3>Configure</h3>
-          <p>Sets git identity, generates SSH key (adds to GitHub), applies Windows dev settings, saves workspace config.</p>
+          <p>Sets git identity, restores SSH key from vault or generates new one (adds to GitHub), applies dev settings, saves config.</p>
         </div>
         <div class="phase-card">
           <div class="phase-num">5</div>
           <h3>Install</h3>
-          <p>Fully unattended. Installs via winget, npm, and ollama pull. Progress saved after each item for resume on failure. Plus VS Code extensions.</p>
+          <p>Fully unattended. Installs via winget/brew/apt, npm, and ollama pull. Progress saved for resume on failure. Plus VS Code extensions and dotfiles.</p>
         </div>
         <div class="phase-card">
           <div class="phase-num">6</div>
@@ -291,7 +293,7 @@
         <div class="phase-card">
           <div class="phase-num">7</div>
           <h3>Verify</h3>
-          <p>Checks every tool is on PATH with version output. Smoke test on ai-journal. Reports total elapsed time.</p>
+          <p>Checks every tool on PATH with version output. Functional tests: Python imports, Node.js, Ollama inference timing. Reports total elapsed time.</p>
         </div>
       </div>
     </section>
@@ -299,10 +301,10 @@
     <section>
       <h2>Quick start</h2>
       <div class="steps">
-        <div class="step"><p>Download this repo as ZIP, or run <code>gh repo clone jeremytrindade/startupjet</code></p></div>
-        <div class="step"><p>Extract anywhere on your new PC.</p></div>
-        <div class="step"><p>Double-click <code>startupjet.bat</code>.</p></div>
-        <div class="step"><p>Answer the setup questions (~2 min): what to install, auth, workspace path.</p></div>
+        <div class="step"><p>Clone this repo: <code>git clone https://github.com/jeremytrindade/startupjet.git</code></p></div>
+        <div class="step"><p><strong>Windows:</strong> double-click <code>startupjet.bat</code>. <strong>macOS/Linux:</strong> run <code>./startupjet.sh</code></p></div>
+        <div class="step"><p>Pick a preset (Minimal dev, Developer, AI workstation) or choose Custom.</p></div>
+        <div class="step"><p>Answer auth questions (~2 min). Everything after this runs unattended.</p></div>
         <div class="step"><p>Walk away. Come back to a fully configured PC.</p></div>
       </div>
     </section>
@@ -311,12 +313,32 @@
       <h2>v1.2 features</h2>
       <div class="features">
         <div class="feature">
-          <strong>Install scope</strong>
-          <p>Current user only or all users on the PC (winget --scope user vs machine).</p>
+          <strong>Cross-platform</strong>
+          <p>Windows (winget), macOS (Homebrew), Linux (apt). Single config, three runners.</p>
         </div>
         <div class="feature">
-          <strong>Log file</strong>
-          <p>All output saved to <code>startupjet-YYYY-MM-DD.log</code> automatically.</p>
+          <strong>Preset profiles</strong>
+          <p>Minimal dev, Developer, or AI workstation. One choice replaces 8 questions.</p>
+        </div>
+        <div class="feature">
+          <strong>Dotfiles management</strong>
+          <p>Clone your dotfiles repo, symlink/copy to the right places. Configure in <code>config/dotfiles.json</code>.</p>
+        </div>
+        <div class="feature">
+          <strong>Vault integration</strong>
+          <p>Bitwarden CLI restores SSH keys from your vault. Falls back to generating new keys.</p>
+        </div>
+        <div class="feature">
+          <strong>Smart model picks</strong>
+          <p>Scores all AI models against your VRAM, RAM, and disk. Suggests the 3 best-fit models.</p>
+        </div>
+        <div class="feature">
+          <strong>Functional tests</strong>
+          <p>Phase 7 runs Python import test, Node.js test, Ollama inference with timing, git identity check.</p>
+        </div>
+        <div class="feature">
+          <strong>Hardware detection</strong>
+          <p>GPU (nvidia-smi, WMI, system_profiler), RAM, disk. Clear verdict for local AI capability.</p>
         </div>
         <div class="feature">
           <strong>SSH key</strong>
@@ -331,12 +353,8 @@
           <p>Auto-installs extensions from <code>config/vscode-extensions.json</code>.</p>
         </div>
         <div class="feature">
-          <strong>Windows dev settings</strong>
-          <p>Show file extensions, hidden files, enable Developer Mode.</p>
-        </div>
-        <div class="feature">
-          <strong>Hardware detection</strong>
-          <p>GPU (nvidia-smi/WMI), RAM, disk. Clear verdict for local AI capability.</p>
+          <strong>Install scope</strong>
+          <p>Windows: current user only or all users (winget --scope user vs machine).</p>
         </div>
         <div class="feature">
           <strong>Speed test</strong>
@@ -344,48 +362,65 @@
         </div>
         <div class="feature">
           <strong>Update mode</strong>
-          <p><code>startupjet.bat -Update</code> upgrades all installed tools to latest.</p>
+          <p><code>-Update</code> / <code>--update</code> upgrades all installed tools to latest.</p>
+        </div>
+        <div class="feature">
+          <strong>Dry run</strong>
+          <p><code>-DryRun</code> / <code>--dry-run</code> shows what would happen without changing anything.</p>
+        </div>
+        <div class="feature">
+          <strong>Log file</strong>
+          <p>All output saved to <code>startupjet-YYYY-MM-DD.log</code> automatically.</p>
         </div>
       </div>
     </section>
 
     <section>
       <h2>Customize for your own setup</h2>
-      <p style="color: var(--muted); margin-bottom: 16px;">Fork this repo and edit these config files:</p>
+      <p style="color: var(--muted); margin-bottom: 16px;">Fork this repo and edit the <code>config/</code> folder. The scripts read everything from config, so you never need to touch the engine code.</p>
       <div class="config-list">
         <div class="config-item">
+          <strong>config/defaults.json</strong>
+          <p>Your workspace path, GitHub username, git email. The single identity file.</p>
+        </div>
+        <div class="config-item">
           <strong>config/repos.json</strong>
-          <p>Set your own list of repos to clone. Mark required repos to fail on 404.</p>
+          <p>Your repos to clone. Mark required repos, set shallow clone for large/optional ones.</p>
         </div>
         <div class="config-item">
           <strong>config/vscode-extensions.json</strong>
-          <p>Set your own VS Code extensions to auto-install.</p>
+          <p>Your VS Code extensions to auto-install.</p>
         </div>
         <div class="config-item">
-          <strong>config/defaults.json</strong>
-          <p>Change the default workspace path and folder name.</p>
+          <strong>config/dotfiles.json</strong>
+          <p>Your dotfiles repo URL and file-to-path mappings. Leave repo empty to skip.</p>
+        </div>
+        <div class="config-item">
+          <strong>config/catalog.json</strong>
+          <p>Add or remove tools. Each tool has install methods per OS (winget, brew, apt, npm, script).</p>
         </div>
       </div>
     </section>
 
     <section>
       <h2>How it works</h2>
-      <p><code>startupjet.bat</code> calls <code>startupjet.ps1</code> with <code>-ExecutionPolicy Bypass</code>. The script asks all questions in Phase 2, then runs everything else unattended.</p>
-      <pre>startupjet.bat [-Update]
-  -> powershell -ExecutionPolicy Bypass -File startupjet.ps1
-    -> Phase 1: Scan (hardware + speed test + 19 tools)
-    -> Phase 2: Choose (all questions upfront)
-    -> Phase 3: Authenticate (gh, tailscale, cloudflared)
-    -> Phase 4: Configure (git, SSH key, dev settings)
-    ---- no more user input after this ----
-    -> Phase 5: Install (winget + npm + ollama + extensions)
-    -> Phase 6: Clone repos (from config/repos.json)
-    -> Phase 7: Verify (PATH check + smoke test + timing)
+      <p>Two entry points, same flow. Windows uses <code>startupjet.bat</code> + PowerShell. macOS/Linux uses <code>startupjet.sh</code> + bash. Both read the same <code>config/</code> files.</p>
+      <pre>Windows: startupjet.bat [-Update] [-DryRun]
+  -> pwsh/powershell -ExecutionPolicy Bypass -File startupjet.ps1
 
-  Update mode: startupjet.bat -Update
-    -> Scans installed tools
-    -> Runs winget upgrade + npm update + ollama pull
-    -> No questions asked</pre>
+macOS/Linux: ./startupjet.sh [--update] [--dry-run]
+  -> bash + python3 for JSON parsing
+
+Both run the same phases:
+  -> Phase 1: Scan (hardware + speed test + tools)
+  -> Phase 2: Choose (preset or custom)
+  -> Phase 3: Authenticate (gh, tailscale, cloudflared)
+  -> Phase 4: Configure (git, SSH key/vault, dev settings)
+  ---- no more user input after this ----
+  -> Phase 5: Install (winget/brew/apt + npm + ollama + extensions)
+  -> Phase 5.5: Dotfiles (clone repo + symlink/copy)
+  -> Phase 6: Clone repos (from config/repos.json)
+  -> Phase 7: Verify (PATH check + functional tests + timing)</pre>
     </section>
   </div>
 

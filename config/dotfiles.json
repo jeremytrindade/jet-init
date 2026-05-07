@@ -1,0 +1,12 @@
+{
+  "_about": "Dotfiles repo and file mappings. Fork this and point to your own dotfiles repo. Each key in 'files' is a path relative to the dotfiles repo, and the value is the target path on your system (~ expands to home).",
+  "repo": "",
+  "files": {
+    ".gitconfig": "~/.gitconfig",
+    ".bashrc": "~/.bashrc",
+    ".zshrc": "~/.zshrc",
+    ".vimrc": "~/.vimrc",
+    ".tmux.conf": "~/.tmux.conf",
+    ".config/starship.toml": "~/.config/starship.toml"
+  }
+}

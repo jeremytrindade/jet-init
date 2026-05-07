@@ -1,0 +1,124 @@
+{
+  "_about": "Platform-aware tool catalog. Each tool has install methods per OS. startupjet.ps1 uses 'windows', startupjet.sh uses 'macos' or 'linux'. downloadMB and installMin are estimates for time calculations.",
+  "tools": [
+    {
+      "id": 1, "name": "Git", "cmd": "git", "category": "dev", "downloadMB": 55, "installMin": 1,
+      "install": {
+        "windows": { "method": "winget", "id": "Git.Git" },
+        "macos":   { "method": "brew",   "package": "git" },
+        "linux":   { "method": "apt",    "package": "git" }
+      }
+    },
+    {
+      "id": 2, "name": "GitHub CLI", "cmd": "gh", "category": "dev", "downloadMB": 15, "installMin": 0.5,
+      "install": {
+        "windows": { "method": "winget", "id": "GitHub.cli" },
+        "macos":   { "method": "brew",   "package": "gh" },
+        "linux":   { "method": "script", "cmd": "curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && echo 'deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main' | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null && sudo apt update && sudo apt install gh -y" }
+      }
+    },
+    {
+      "id": 3, "name": "Python 3", "cmd": "python3", "cmdWindows": "python", "category": "dev", "downloadMB": 30, "installMin": 1,
+      "install": {
+        "windows": { "method": "winget", "id": "Python.Python.3.12" },
+        "macos":   { "method": "brew",   "package": "python@3.12" },
+        "linux":   { "method": "apt",    "package": "python3 python3-pip python3-venv" }
+      }
+    },
+    {
+      "id": 4, "name": "PowerShell 7", "cmd": "pwsh", "category": "dev", "downloadMB": 100, "installMin": 1.5,
+      "install": {
+        "windows": { "method": "winget", "id": "Microsoft.PowerShell" }
+      }
+    },
+    {
+      "id": 5, "name": "OpenSSH", "cmd": "ssh", "category": "dev", "downloadMB": 5, "installMin": 0.5,
+      "install": {
+        "windows": { "method": "manual", "cmd": "Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0" },
+        "macos":   { "method": "builtin" },
+        "linux":   { "method": "apt", "package": "openssh-client" }
+      }
+    },
+    {
+      "id": 6, "name": "Node.js", "cmd": "node", "category": "dev", "downloadMB": 30, "installMin": 1,
+      "install": {
+        "windows": { "method": "winget", "id": "OpenJS.NodeJS" },
+        "macos":   { "method": "brew",   "package": "node" },
+        "linux":   { "method": "script", "cmd": "curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs" }
+      }
+    },
+    {
+      "id": 7, "name": "VS Code", "cmd": "code", "category": "dev", "downloadMB": 95, "installMin": 1.5,
+      "install": {
+        "windows": { "method": "winget", "id": "Microsoft.VisualStudioCode" },
+        "macos":   { "method": "cask",   "package": "visual-studio-code" },
+        "linux":   { "method": "script", "cmd": "sudo snap install code --classic" }
+      }
+    },
+    {
+      "id": 8, "name": "Tailscale", "cmd": "tailscale", "category": "network", "downloadMB": 40, "installMin": 1,
+      "install": {
+        "windows": { "method": "winget", "id": "tailscale.tailscale" },
+        "macos":   { "method": "cask",   "package": "tailscale" },
+        "linux":   { "method": "script", "cmd": "curl -fsSL https://tailscale.com/install.sh | sh" }
+      }
+    },
+    {
+      "id": 9, "name": "cloudflared", "cmd": "cloudflared", "category": "network", "downloadMB": 25, "installMin": 0.5,
+      "install": {
+        "windows": { "method": "winget", "id": "Cloudflare.cloudflared" },
+        "macos":   { "method": "brew",   "package": "cloudflared" },
+        "linux":   { "method": "script", "cmd": "curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb && sudo dpkg -i /tmp/cloudflared.deb" }
+      }
+    },
+    {
+      "id": 10, "name": "Claude Code", "cmd": "claude", "category": "ai", "downloadMB": 50, "installMin": 1,
+      "install": {
+        "windows": { "method": "npm", "package": "@anthropic-ai/claude-code" },
+        "macos":   { "method": "npm", "package": "@anthropic-ai/claude-code" },
+        "linux":   { "method": "npm", "package": "@anthropic-ai/claude-code" }
+      }
+    },
+    {
+      "id": 11, "name": "OpenAI Codex", "cmd": "codex", "category": "ai", "downloadMB": 30, "installMin": 1,
+      "install": {
+        "windows": { "method": "npm", "package": "@openai/codex" },
+        "macos":   { "method": "npm", "package": "@openai/codex" },
+        "linux":   { "method": "npm", "package": "@openai/codex" }
+      }
+    },
+    {
+      "id": 12, "name": "Ollama", "cmd": "ollama", "category": "local-ai", "downloadMB": 110, "installMin": 1,
+      "install": {
+        "windows": { "method": "winget", "id": "Ollama.Ollama" },
+        "macos":   { "method": "brew",   "package": "ollama" },
+        "linux":   { "method": "script", "cmd": "curl -fsSL https://ollama.com/install.sh | sh" }
+      }
+    },
+    {
+      "id": 13, "name": "uv", "cmd": "uv", "category": "local-ai", "downloadMB": 15, "installMin": 0.5,
+      "install": {
+        "windows": { "method": "winget", "id": "astral-sh.uv" },
+        "macos":   { "method": "brew",   "package": "uv" },
+        "linux":   { "method": "script", "cmd": "curl -LsSf https://astral.sh/uv/install.sh | sh" }
+      }
+    },
+    {
+      "id": 14, "name": "Bitwarden CLI", "cmd": "bw", "category": "optional", "downloadMB": 40, "installMin": 0.5,
+      "install": {
+        "windows": { "method": "winget", "id": "Bitwarden.CLI" },
+        "macos":   { "method": "brew",   "package": "bitwarden-cli" },
+        "linux":   { "method": "npm",    "package": "@bitwarden/cli" }
+      }
+    }
+  ],
+  "models": [
+    { "id": 15, "name": "llama3.1:8b",     "category": "model",       "size": "4.9 GB",  "downloadMB": 4900,  "minVRAM": 5,  "recVRAM": 8,  "minRAM": 8,  "quality": 7, "desc": "general purpose, strong reasoning" },
+    { "id": 16, "name": "qwen2.5:7b",      "category": "model",       "size": "4.7 GB",  "downloadMB": 4700,  "minVRAM": 4,  "recVRAM": 6,  "minRAM": 8,  "quality": 7, "desc": "multilingual, good at coding" },
+    { "id": 17, "name": "mistral:7b",      "category": "model",       "size": "4.1 GB",  "downloadMB": 4100,  "minVRAM": 4,  "recVRAM": 6,  "minRAM": 8,  "quality": 6, "desc": "fast general purpose, small footprint" },
+    { "id": 18, "name": "deepseek-r1:14b", "category": "model",       "size": "9.0 GB",  "downloadMB": 9000,  "minVRAM": 8,  "recVRAM": 12, "minRAM": 16, "quality": 8, "desc": "reasoning specialist, chain-of-thought" },
+    { "id": 19, "name": "qwen3:35b-a3b",   "category": "model",       "size": "20 GB",   "downloadMB": 20000, "minVRAM": 4,  "recVRAM": 8,  "minRAM": 24, "quality": 9, "desc": "MoE 35B total / 3B active, top quality, fast inference" },
+    { "id": 20, "name": "gemma4:31b",      "category": "model-lg",    "size": "19 GB",   "downloadMB": 19000, "minVRAM": 16, "recVRAM": 24, "minRAM": 32, "quality": 9, "desc": "large dense model, top quality, needs big GPU" },
+    { "id": 21, "name": "kimi-k2.6:cloud", "category": "model-cloud", "size": "cloud",   "downloadMB": 10,    "minVRAM": 0,  "recVRAM": 0,  "minRAM": 0,  "quality": 8, "desc": "cloud-hosted, no local GPU needed" }
+  ]
+}

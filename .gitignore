@@ -3,3 +3,5 @@ config/progress.json
 debug-testing/
 startupjet-*.log
 *.tmp
+*.backup
+create-and-push.bat
