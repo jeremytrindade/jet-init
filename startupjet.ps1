@@ -9,7 +9,15 @@
 # Flow: detect -> choose (all questions upfront) -> authenticate -> configure
 #       -> install (unattended) -> clone (unattended) -> verify -> summary
 
-param([switch]$Update, [switch]$DryRun, [switch]$ShowVersion, [Alias("h")][switch]$Help)
+param(
+  [switch]$Update,
+  [switch]$DryRun,
+  [switch]$Fix,         # audit-only: walk profiles for duplicates, do not install
+  [switch]$FullDev,     # full developer PC: cross-account install (Machine scope)
+  [switch]$Shared,      # shared PC: per-account install only (User scope)
+  [switch]$ShowVersion,
+  [Alias("h")][switch]$Help
+)
 
 $script:VERSION = "1.2"
 
@@ -21,11 +29,25 @@ if ($ShowVersion) {
 if ($Help) {
   Write-Host "startupjet v$script:VERSION - fresh-PC bootstrap for Windows"
   Write-Host ""
-  Write-Host "Usage: startupjet.bat [-Update] [-DryRun] [-ShowVersion] [-Help]"
-  Write-Host "  -Update       Upgrade all installed tools to latest"
+  Write-Host "Usage: startupjet.bat [mode] [pc-type] [-DryRun] [-ShowVersion] [-Help]"
+  Write-Host ""
+  Write-Host "Mode (default: install, ask interactively):"
+  Write-Host "  -Update       Upgrade installed tools"
+  Write-Host "  -Fix          Audit only, walk every account for cross-account"
+  Write-Host "                waste and report findings, no install"
+  Write-Host ""
+  Write-Host "PC type (default: ask interactively):"
+  Write-Host "  -FullDev      Full developer PC (mine, all accounts are me)"
+  Write-Host "                Cross-account install: Machine-wide env vars,"
+  Write-Host "                shared Ollama models, etc. Needs admin to land"
+  Write-Host "                Machine-scope changes."
+  Write-Host "  -Shared       Shared PC (others use it). Per-account only,"
+  Write-Host "                no machine-wide changes."
+  Write-Host ""
+  Write-Host "Other:"
   Write-Host "  -DryRun       Show what would happen without making changes"
   Write-Host "  -ShowVersion  Show version"
-  Write-Host "  -Help      Show this help"
+  Write-Host "  -Help         Show this help"
   exit 0
 }
 
@@ -349,15 +371,26 @@ function Choose-OllamaStorage {
     return $null
   }
 
-  $scope = if ($script:isAdmin) { "Machine" } else { "User" }
-  if ($scope -eq "User") {
-    Write-Host "  Setting OLLAMA_MODELS at User scope. Re-run startupjet as admin to make it Machine-wide (so other accounts on this PC see it too)." -ForegroundColor DarkYellow
+  # Scope decision:
+  #   Shared PC  -> always User scope (do not touch Machine-wide settings).
+  #   FullDev    -> Machine scope if admin, User scope otherwise.
+  $scope = if ($script:pcType -eq "Shared") {
+    "User"
+  } elseif ($script:isAdmin) {
+    "Machine"
+  } else {
+    "User"
+  }
+  if ($scope -eq "User" -and $script:pcType -eq "FullDev") {
+    Write-Host "  Setting OLLAMA_MODELS at User scope (Full-dev mode wanted Machine, but no admin). Re-run as admin to broaden it." -ForegroundColor DarkYellow
+  } elseif ($scope -eq "User" -and $script:pcType -eq "Shared") {
+    Write-Host "  Setting OLLAMA_MODELS at User scope (Shared PC mode, per-account)." -ForegroundColor DarkGray
   }
 
   Set-OllamaModelsEnv -Path $target -Scope $scope
   Write-Host "  [OK] OLLAMA_MODELS = $target  ($scope scope)" -ForegroundColor Green
 
-  if ($script:isAdmin) {
+  if ($script:isAdmin -and $script:pcType -eq "FullDev") {
     Set-SharedFolderAcl -Path $target
   }
 
@@ -389,7 +422,9 @@ function Choose-OllamaStorage {
     foreach ($o in $otherUsers) {
       Write-Host ("    {0,-50}  {1,6:N1} GB   ({2})" -f $o.Path, $o.SizeGB, $o.Owner)
     }
-    if ($script:isAdmin) {
+    if ($script:pcType -eq "Shared") {
+      Write-Host "  Shared PC mode: leaving other accounts' models alone." -ForegroundColor DarkGray
+    } elseif ($script:isAdmin) {
       $reply = Read-Host "  Move them all into $target as well? [Y/n]"
       if ($reply -ne "n" -and $reply -ne "N") {
         foreach ($o in $otherUsers) {
@@ -426,6 +461,209 @@ function Set-SharedFolderAcl {
   } catch {
     Write-Host "  [warn] Could not set shared ACL on ${Path}: $($_.Exception.Message)" -ForegroundColor Yellow
   }
+}
+
+function Get-DirSizeGB {
+  param([string] $Path)
+  if (-not (Test-Path $Path)) { return 0 }
+  try {
+    $b = (Get-ChildItem $Path -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+    return [math]::Round($b / 1GB, 2)
+  } catch { return 0 }
+}
+
+function Invoke-FixMode {
+  # Audit this account for cross-account waste and offer to consolidate.
+  # Does NOT install anything. Does NOT clone repos. Read-only by default,
+  # mutating only after explicit confirmation per finding.
+  Write-Phase "FIX MODE, audit this account for cross-account waste"
+  Write-Host ""
+  Write-Host "  Walking each Windows account profile to find duplicates..." -ForegroundColor DarkGray
+  Write-Host ""
+
+  $totalWastedGB = 0.0
+  $findings      = @()
+
+  # --- 1. Ollama models ---
+  Write-Host "  [Ollama models]" -ForegroundColor White
+  $ollamaDirs = Get-OllamaModelDirs | Where-Object { $_.Exists }
+  $machineEnv = [System.Environment]::GetEnvironmentVariable("OLLAMA_MODELS","Machine")
+  if ($ollamaDirs.Count -eq 0) {
+    Write-Host "    No model directories found on this machine." -ForegroundColor DarkGray
+  } else {
+    foreach ($d in $ollamaDirs) {
+      Write-Host ("    {0,-50}  {1,6:N1} GB   ({2})" -f $d.Path, $d.SizeGB, $d.Owner)
+    }
+    if ([string]::IsNullOrWhiteSpace($machineEnv)) {
+      Write-Host "    OLLAMA_MODELS is NOT set Machine-wide. Each account stores models in its own profile." -ForegroundColor Yellow
+    } else {
+      Write-Host "    OLLAMA_MODELS (Machine) = $machineEnv" -ForegroundColor Green
+    }
+    $perUserDirs = @($ollamaDirs | Where-Object { $_.Owner -notmatch '^\(env:' })
+    if ($perUserDirs.Count -gt 1 -or ($perUserDirs.Count -eq 1 -and [string]::IsNullOrWhiteSpace($machineEnv))) {
+      $wasted = ($perUserDirs | Measure-Object -Property SizeGB -Sum).Sum
+      $totalWastedGB += $wasted
+      $findings += [pscustomobject]@{
+        Tool      = "Ollama models"
+        WastedGB  = [math]::Round($wasted, 2)
+        FixerPath = Join-Path $PSScriptRoot "tools\migrate-ollama-shared.bat"
+      }
+      Write-Host ("    -> {0:N2} GB worth of per-account model copies" -f $wasted) -ForegroundColor Yellow
+    } else {
+      Write-Host "    -> Already consolidated." -ForegroundColor Green
+    }
+  }
+
+  # --- 2. npm global packages ---
+  Write-Host ""
+  Write-Host "  [npm global packages, claude code, codex, etc.]" -ForegroundColor White
+  $npmDirs = @()
+  Get-ChildItem "C:\Users" -Directory -Force -ErrorAction SilentlyContinue | ForEach-Object {
+    $candidate = Join-Path $_.FullName "AppData\Roaming\npm"
+    if (Test-Path $candidate) {
+      $size = Get-DirSizeGB $candidate
+      if ($size -gt 0.05) {
+        $npmDirs += [pscustomobject]@{ Owner = $_.Name; Path = $candidate; SizeGB = $size }
+      }
+    }
+  }
+  $npmPrefix = [System.Environment]::GetEnvironmentVariable("NPM_CONFIG_PREFIX","Machine")
+  if ($npmDirs.Count -eq 0) {
+    Write-Host "    No npm global directories detected." -ForegroundColor DarkGray
+  } else {
+    foreach ($d in $npmDirs) {
+      Write-Host ("    {0,-50}  {1,6:N2} GB   ({2})" -f $d.Path, $d.SizeGB, $d.Owner)
+    }
+    if ([string]::IsNullOrWhiteSpace($npmPrefix)) {
+      Write-Host "    NPM_CONFIG_PREFIX is NOT set Machine-wide. Globals duplicate per account." -ForegroundColor Yellow
+    } else {
+      Write-Host "    NPM_CONFIG_PREFIX (Machine) = $npmPrefix" -ForegroundColor Green
+    }
+    if ($npmDirs.Count -gt 1) {
+      $extra = (($npmDirs | Measure-Object -Property SizeGB -Sum).Sum) - ($npmDirs | Measure-Object -Property SizeGB -Maximum).Maximum
+      $totalWastedGB += $extra
+      $findings += [pscustomobject]@{
+        Tool      = "npm globals"
+        WastedGB  = [math]::Round($extra, 2)
+        FixerPath = "(planned: tools\migrate-shared-caches.bat)"
+      }
+      Write-Host ("    -> ~{0:N2} GB recoverable across {1} accounts" -f $extra, $npmDirs.Count) -ForegroundColor Yellow
+    } else {
+      Write-Host "    -> Only one account has npm globals here, no duplication." -ForegroundColor Green
+    }
+  }
+
+  # --- 3. uv cache ---
+  Write-Host ""
+  Write-Host "  [uv cache]" -ForegroundColor White
+  $uvDirs = @()
+  Get-ChildItem "C:\Users" -Directory -Force -ErrorAction SilentlyContinue | ForEach-Object {
+    $candidate = Join-Path $_.FullName "AppData\Local\uv\cache"
+    if (Test-Path $candidate) {
+      $size = Get-DirSizeGB $candidate
+      if ($size -gt 0.05) {
+        $uvDirs += [pscustomobject]@{ Owner = $_.Name; Path = $candidate; SizeGB = $size }
+      }
+    }
+  }
+  $uvCacheEnv = [System.Environment]::GetEnvironmentVariable("UV_CACHE_DIR","Machine")
+  if ($uvDirs.Count -eq 0) {
+    Write-Host "    No uv caches detected." -ForegroundColor DarkGray
+  } else {
+    foreach ($d in $uvDirs) {
+      Write-Host ("    {0,-50}  {1,6:N2} GB   ({2})" -f $d.Path, $d.SizeGB, $d.Owner)
+    }
+    if ([string]::IsNullOrWhiteSpace($uvCacheEnv)) {
+      Write-Host "    UV_CACHE_DIR is NOT set Machine-wide. Caches duplicate per account." -ForegroundColor Yellow
+    }
+    if ($uvDirs.Count -gt 1) {
+      $extra = (($uvDirs | Measure-Object -Property SizeGB -Sum).Sum) - ($uvDirs | Measure-Object -Property SizeGB -Maximum).Maximum
+      $totalWastedGB += $extra
+      $findings += [pscustomobject]@{
+        Tool      = "uv cache"
+        WastedGB  = [math]::Round($extra, 2)
+        FixerPath = "(planned: tools\migrate-shared-caches.bat)"
+      }
+      Write-Host ("    -> ~{0:N2} GB recoverable across {1} accounts" -f $extra, $uvDirs.Count) -ForegroundColor Yellow
+    } else {
+      Write-Host "    -> Only one account has a uv cache, no duplication." -ForegroundColor Green
+    }
+  }
+
+  # --- 4. pip cache ---
+  Write-Host ""
+  Write-Host "  [pip wheel cache]" -ForegroundColor White
+  $pipDirs = @()
+  Get-ChildItem "C:\Users" -Directory -Force -ErrorAction SilentlyContinue | ForEach-Object {
+    $candidate = Join-Path $_.FullName "AppData\Local\pip\Cache"
+    if (Test-Path $candidate) {
+      $size = Get-DirSizeGB $candidate
+      if ($size -gt 0.05) {
+        $pipDirs += [pscustomobject]@{ Owner = $_.Name; Path = $candidate; SizeGB = $size }
+      }
+    }
+  }
+  $pipCacheEnv = [System.Environment]::GetEnvironmentVariable("PIP_CACHE_DIR","Machine")
+  if ($pipDirs.Count -eq 0) {
+    Write-Host "    No pip caches detected." -ForegroundColor DarkGray
+  } else {
+    foreach ($d in $pipDirs) {
+      Write-Host ("    {0,-50}  {1,6:N2} GB   ({2})" -f $d.Path, $d.SizeGB, $d.Owner)
+    }
+    if ([string]::IsNullOrWhiteSpace($pipCacheEnv)) {
+      Write-Host "    PIP_CACHE_DIR is NOT set Machine-wide. Caches duplicate per account." -ForegroundColor Yellow
+    }
+    if ($pipDirs.Count -gt 1) {
+      $extra = (($pipDirs | Measure-Object -Property SizeGB -Sum).Sum) - ($pipDirs | Measure-Object -Property SizeGB -Maximum).Maximum
+      $totalWastedGB += $extra
+      $findings += [pscustomobject]@{
+        Tool      = "pip cache"
+        WastedGB  = [math]::Round($extra, 2)
+        FixerPath = "(planned: tools\migrate-shared-caches.bat)"
+      }
+      Write-Host ("    -> ~{0:N2} GB recoverable across {1} accounts" -f $extra, $pipDirs.Count) -ForegroundColor Yellow
+    } else {
+      Write-Host "    -> Only one account has a pip cache, no duplication." -ForegroundColor Green
+    }
+  }
+
+  # --- Summary ---
+  Write-Host ""
+  Write-Host "  ========================================================="
+  Write-Host ("  Total recoverable space (estimate): {0:N2} GB" -f $totalWastedGB) -ForegroundColor Cyan
+  Write-Host "  ========================================================="
+  Write-Host ""
+
+  if ($findings.Count -eq 0) {
+    Write-Host "  Nothing to fix on this machine. You are already consolidated." -ForegroundColor Green
+    return
+  }
+
+  Write-Host "  Findings:" -ForegroundColor White
+  foreach ($f in $findings) {
+    Write-Host ("    {0,-20}  ~{1,6:N2} GB recoverable   fix: {2}" -f $f.Tool, $f.WastedGB, $f.FixerPath)
+  }
+  Write-Host ""
+
+  $ollamaFinding = $findings | Where-Object { $_.Tool -eq "Ollama models" } | Select-Object -First 1
+  if ($ollamaFinding) {
+    if ($script:isAdmin) {
+      $reply = Read-Host "  Run the Ollama consolidation now? [Y/n]"
+      if ($reply -ne "n" -and $reply -ne "N") {
+        $script:ollamaModelsPath = Choose-OllamaStorage
+      }
+    } else {
+      Write-Host "  To fix Ollama: right-click $($ollamaFinding.FixerPath) -> Run as administrator." -ForegroundColor Yellow
+    }
+  }
+
+  $cachesPlanned = $findings | Where-Object { $_.Tool -ne "Ollama models" }
+  if ($cachesPlanned.Count -gt 0) {
+    Write-Host ""
+    Write-Host "  Cache consolidation tool (npm / uv / pip) is planned but not yet shipped." -ForegroundColor DarkYellow
+    Write-Host "  Track at: https://github.com/jeremytrindade/startupjet/issues" -ForegroundColor DarkGray
+  }
+  Write-Host ""
 }
 
 function Get-RecommendedModels {
@@ -465,6 +703,78 @@ function Save-Progress($itemName) {
   New-Item -ItemType Directory -Force -Path $dir | Out-Null
   @{ completed = $script:progress.completed; lastUpdate = (Get-Date -Format "yyyy-MM-dd HH:mm:ss") } |
     ConvertTo-Json | Out-File $progressPath -Encoding UTF8
+}
+
+# =====================================================================
+# PHASE 0: MODE + PC TYPE
+# =====================================================================
+# Decide what we're doing (install / update / fix-only) and whether this
+# is a full-developer PC (cross-account) or a shared one (per-account).
+
+$script:pcType = $null   # "FullDev" or "Shared"
+$script:mode   = $null   # "Install", "Update", or "Fix"
+
+if ($Update)      { $script:mode = "Update" }
+elseif ($Fix)     { $script:mode = "Fix" }
+else              { $script:mode = "Install" }
+
+if ($FullDev)     { $script:pcType = "FullDev" }
+elseif ($Shared)  { $script:pcType = "Shared" }
+
+# Interactive top-level mode prompt only when no mode flag was passed.
+if (-not $Update -and -not $Fix -and -not $FullDev -and -not $Shared) {
+  Write-Host ""
+  Write-Host "  What do you want to do?" -ForegroundColor White
+  Write-Host "    [I] Install / set up this PC (default)"
+  Write-Host "    [F] Fix / audit only (walk every account, no install)"
+  Write-Host "    [U] Update installed tools"
+  Write-Host "    [Q] Quit"
+  $reply = Read-Host "  Choice [I/F/U/Q]"
+  switch -Regex ($reply) {
+    "^[Ff]" { $script:mode = "Fix";    break }
+    "^[Uu]" { $script:mode = "Update"; break }
+    "^[Qq]" { Write-Host "  Bye."; exit 0 }
+    default { $script:mode = "Install" }
+  }
+}
+
+# PC-type prompt when mode is Install or Fix and pcType not preset.
+if (($script:mode -eq "Install" -or $script:mode -eq "Fix") -and -not $script:pcType) {
+  Write-Host ""
+  Write-Host "  Is this PC mostly used by you, or shared with others?" -ForegroundColor White
+  Write-Host "    [F] Full developer PC (default)" -ForegroundColor Cyan
+  Write-Host "        all accounts on this PC are me, share everything cross-account:"
+  Write-Host "        Machine-wide env vars, shared Ollama models, etc."
+  Write-Host "    [S] Shared PC" -ForegroundColor Cyan
+  Write-Host "        other people use this too, install per-account only,"
+  Write-Host "        no machine-wide changes."
+  $reply = Read-Host "  Choice [F/S]"
+  $script:pcType = if ($reply -match "^[Ss]") { "Shared" } else { "FullDev" }
+}
+
+if ($script:pcType -eq "FullDev" -and -not $script:isAdmin) {
+  Write-Host ""
+  Write-Host "  Note: Full-developer mode wants to set Machine-scope env vars and write" -ForegroundColor Yellow
+  Write-Host "  shared folder ACLs, both of which need admin. Without admin we'll fall" -ForegroundColor Yellow
+  Write-Host "  back to User scope and skip cross-account ACLs (your settings still work" -ForegroundColor Yellow
+  Write-Host "  for THIS account; other accounts won't pick them up until an admin run)." -ForegroundColor Yellow
+}
+
+# Fix-only mode: audit and exit, no PHASE 1 scan / install / clone.
+if ($script:mode -eq "Fix") {
+  try { Invoke-FixMode } finally { Stop-Transcript | Out-Null }
+  Write-Host ""
+  Read-Host "  Press Enter to close"
+  exit 0
+}
+
+# In FullDev install mode, offer the audit before continuing.
+if ($script:mode -eq "Install" -and $script:pcType -eq "FullDev") {
+  Write-Host ""
+  $reply = Read-Host "  Review and rectify existing PC structure first (find duplicates, consolidate)? [Y/n]"
+  if ($reply -ne "n" -and $reply -ne "N") {
+    Invoke-FixMode
+  }
 }
 
 # =====================================================================
