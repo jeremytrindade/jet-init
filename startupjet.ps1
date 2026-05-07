@@ -4,19 +4,54 @@
 # Usage:
 #   startupjet.bat              Normal install (scan, choose, auth, install, clone, verify)
 #   startupjet.bat -Update      Upgrade all installed tools to latest versions
+#   startupjet.bat -DryRun      Show what would happen without doing anything
 #
 # Flow: detect -> choose (all questions upfront) -> authenticate -> configure
 #       -> install (unattended) -> clone (unattended) -> verify -> summary
 
-param([switch]$Update)
+param([switch]$Update, [switch]$DryRun, [switch]$Version, [Alias("h")][switch]$Help)
+
+$script:VERSION = "1.2"
+
+if ($Version) {
+  Write-Host "startupjet v$script:VERSION"
+  exit 0
+}
+
+if ($Help) {
+  Write-Host "startupjet v$script:VERSION - fresh-PC bootstrap for Windows"
+  Write-Host ""
+  Write-Host "Usage: startupjet.bat [-Update] [-DryRun] [-Version] [-Help]"
+  Write-Host "  -Update    Upgrade all installed tools to latest"
+  Write-Host "  -DryRun    Show what would happen without making changes"
+  Write-Host "  -Version   Show version"
+  Write-Host "  -Help      Show this help"
+  exit 0
+}
 
 $ErrorActionPreference = "Continue"
 $startTime = Get-Date
+
+# === Admin check helper ===
+function Test-IsAdmin {
+  $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+  $principal = [Security.Principal.WindowsPrincipal]$identity
+  $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+$script:isAdmin = Test-IsAdmin
+$script:presetApplied = $false
 
 # === Log file ===
 $logFile = Join-Path $PSScriptRoot "startupjet-$(Get-Date -Format 'yyyy-MM-dd-HHmm').log"
 Start-Transcript -Path $logFile -Append | Out-Null
 Write-Host "  Log: $logFile" -ForegroundColor DarkGray
+
+if ($DryRun) {
+  Write-Host "  DRY RUN MODE: no changes will be made" -ForegroundColor Yellow
+}
+
+try {
 
 $script:summary = @{
   installed     = @()
@@ -75,6 +110,22 @@ function Refresh-SessionPath {
       $env:Path += ";$p"
     }
   }
+}
+
+function Get-RecommendedModels {
+  param($models, [double]$vram, [double]$ram, [double]$diskFree)
+  $scored = @()
+  foreach ($m in $models) {
+    if (-not $m.minVRAM -or $m.minVRAM -eq 0) { continue }
+    if ($ram -lt $m.minRAM) { continue }
+    if ($diskFree -lt ($m.downloadMB / 1024)) { continue }
+    $score = $m.quality
+    if ($vram -ge $m.recVRAM) { $score += 3 }
+    elseif ($vram -ge $m.minVRAM) { $score += 1 }
+    else { continue }
+    $scored += [PSCustomObject]@{ model = $m; score = $score }
+  }
+  $scored | Sort-Object score -Descending | Select-Object -First 3 | ForEach-Object { $_.model }
 }
 
 # === Resume support ===
@@ -145,6 +196,27 @@ if (-not $Update) {
       if ($gpuName -match "NVIDIA") { $gpuBrand = "nvidia" }
       elseif ($gpuName -match "AMD|Radeon") { $gpuBrand = "amd" }
       elseif ($gpuName -match "Intel") { $gpuBrand = "intel" }
+
+      # WMI AdapterRAM is a DWORD, caps at 4 GB. Try registry for the real value.
+      if ($vramGB -le 4.1) {
+        try {
+          $regBase = "HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
+          $subKeys = Get-ChildItem $regBase -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "\\\d{4}$" }
+          foreach ($sk in $subKeys) {
+            $desc = (Get-ItemProperty $sk.PSPath -ErrorAction SilentlyContinue).DriverDesc
+            if ($desc -and $gpuName -match [regex]::Escape($desc.Substring(0, [math]::Min(10, $desc.Length)))) {
+              $qwMem = (Get-ItemProperty $sk.PSPath -ErrorAction SilentlyContinue).'HardwareInformation.qwMemorySize'
+              if ($qwMem -and $qwMem -gt 0) {
+                $regVram = [math]::Round([int64]$qwMem / 1GB, 1)
+                if ($regVram -gt $vramGB) {
+                  $vramGB = $regVram
+                }
+                break
+              }
+            }
+          }
+        } catch {}
+      }
     }
   }
 
@@ -232,29 +304,50 @@ if (-not $Update) {
 }
 
 # --- Software catalog ---
-$catalog = @(
-  @{ id = 1;  name = "Git";            cmd = "git";        category = "dev";      method = "winget"; wingetId = "Git.Git";                   installed = $false; selected = $false; downloadMB = 55;   installMin = 1 }
-  @{ id = 2;  name = "GitHub CLI";     cmd = "gh";         category = "dev";      method = "winget"; wingetId = "GitHub.cli";                 installed = $false; selected = $false; downloadMB = 15;   installMin = 0.5 }
-  @{ id = 3;  name = "Python 3";       cmd = "python";     category = "dev";      method = "winget"; wingetId = "Python.Python.3.12";         installed = $false; selected = $false; downloadMB = 30;   installMin = 1 }
-  @{ id = 4;  name = "PowerShell 7";   cmd = "pwsh";       category = "dev";      method = "winget"; wingetId = "Microsoft.PowerShell";       installed = $false; selected = $false; downloadMB = 100;  installMin = 1.5 }
-  @{ id = 5;  name = "OpenSSH";        cmd = "ssh";        category = "dev";      method = "manual"; manual = "Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0"; installed = $false; selected = $false; downloadMB = 5; installMin = 0.5 }
-  @{ id = 6;  name = "Node.js";        cmd = "node";       category = "dev";      method = "winget"; wingetId = "OpenJS.NodeJS";              installed = $false; selected = $false; downloadMB = 30;   installMin = 1 }
-  @{ id = 7;  name = "VS Code";        cmd = "code";       category = "dev";      method = "winget"; wingetId = "Microsoft.VisualStudioCode"; installed = $false; selected = $false; downloadMB = 95;   installMin = 1.5 }
-  @{ id = 8;  name = "Tailscale";      cmd = "tailscale";  category = "network";  method = "winget"; wingetId = "tailscale.tailscale";        installed = $false; selected = $false; downloadMB = 40;   installMin = 1 }
-  @{ id = 9;  name = "cloudflared";    cmd = "cloudflared"; category = "network"; method = "winget"; wingetId = "Cloudflare.cloudflared";     installed = $false; selected = $false; downloadMB = 25;   installMin = 0.5 }
-  @{ id = 10; name = "Claude Code";    cmd = "claude";     category = "ai";       method = "npm";    pkg = "@anthropic-ai/claude-code";       installed = $false; selected = $false; downloadMB = 50;   installMin = 1 }
-  @{ id = 11; name = "OpenAI Codex";   cmd = "codex";      category = "ai";       method = "npm";    pkg = "@openai/codex";                   installed = $false; selected = $false; downloadMB = 30;   installMin = 1 }
-  @{ id = 12; name = "Ollama";         cmd = "ollama";     category = "local-ai"; method = "winget"; wingetId = "Ollama.Ollama";              installed = $false; selected = $false; downloadMB = 110;  installMin = 1 }
-  @{ id = 13; name = "uv";             cmd = "uv";         category = "local-ai"; method = "winget"; wingetId = "astral-sh.uv";               installed = $false; selected = $false; downloadMB = 15;   installMin = 0.5 }
-  @{ id = 14; name = "llama3.1:8b";    cmd = $null;        category = "model";    method = "ollama"; size = "4.9 GB";                         installed = $false; selected = $false; downloadMB = 4900; installMin = 0 }
-  @{ id = 15; name = "qwen2.5:7b";     cmd = $null;        category = "model";    method = "ollama"; size = "4.7 GB";                         installed = $false; selected = $false; downloadMB = 4700; installMin = 0 }
-  @{ id = 16; name = "mistral:7b";     cmd = $null;        category = "model";    method = "ollama"; size = "4.1 GB";                         installed = $false; selected = $false; downloadMB = 4100; installMin = 0 }
-  # Larger models (need 16+ GB VRAM)
-  @{ id = 17; name = "gemma4:31b";        cmd = $null;     category = "model-lg"; method = "ollama"; size = "19 GB";                          installed = $false; selected = $false; downloadMB = 19000; installMin = 0 }
-  @{ id = 18; name = "deepseek-r1:14b";   cmd = $null;     category = "model";    method = "ollama"; size = "9.0 GB";                         installed = $false; selected = $false; downloadMB = 9000;  installMin = 0 }
-  # Cloud model (runs on Ollama cloud, no local GPU needed)
-  @{ id = 19; name = "kimi-k2.6:cloud";   cmd = $null;     category = "model-cloud"; method = "ollama"; size = "cloud";                       installed = $false; selected = $false; downloadMB = 10;    installMin = 0 }
-)
+# Load catalog from config/catalog.json (single source of truth for all platforms)
+$catalogJsonPath = Join-Path $PSScriptRoot "config\catalog.json"
+$catalogData = Get-Content $catalogJsonPath -Raw | ConvertFrom-Json
+
+$catalog = @()
+foreach ($t in $catalogData.tools) {
+  $winInst = $t.install.windows
+  if (-not $winInst) { continue }
+  $cmd = if ($t.cmdWindows) { $t.cmdWindows } else { $t.cmd }
+  $entry = @{
+    id         = [int]$t.id
+    name       = $t.name
+    cmd        = $cmd
+    category   = $t.category
+    method     = $winInst.method
+    installed  = $false
+    selected   = $false
+    downloadMB = if ($t.downloadMB) { $t.downloadMB } else { 50 }
+    installMin = if ($t.installMin) { $t.installMin } else { 1 }
+  }
+  if ($winInst.id)      { $entry.wingetId = $winInst.id }
+  if ($winInst.package) { $entry.pkg = $winInst.package }
+  if ($winInst.cmd)     { $entry.manual = $winInst.cmd }
+  $catalog += $entry
+}
+foreach ($m in $catalogData.models) {
+  $catalog += @{
+    id         = [int]$m.id
+    name       = $m.name
+    cmd        = $null
+    category   = if ($m.category) { $m.category } else { "model" }
+    method     = "ollama"
+    size       = $m.size
+    installed  = $false
+    selected   = $false
+    downloadMB = if ($m.downloadMB) { $m.downloadMB } else { 5000 }
+    installMin = 0
+    minVRAM    = if ($m.minVRAM) { $m.minVRAM } else { 0 }
+    recVRAM    = if ($m.recVRAM) { $m.recVRAM } else { 0 }
+    minRAM     = if ($m.minRAM)  { $m.minRAM }  else { 0 }
+    quality    = if ($m.quality) { $m.quality } else { 5 }
+    desc       = if ($m.desc)    { $m.desc }    else { "" }
+  }
+}
 
 foreach ($item in $catalog) {
   if ($item.method -eq "ollama") {
@@ -289,7 +382,24 @@ Write-Host ("  $($alreadyInstalled.Count) installed, $($notInstalled.Count) avai
 # UPDATE MODE: upgrade installed tools and exit
 # =====================================================================
 if ($Update) {
-  Write-Phase "UPDATE MODE, upgrading installed tools"
+  Write-Phase "UPDATE MODE"
+
+  # Self-update startupjet if it is a git repo
+  if (Test-Path (Join-Path $PSScriptRoot ".git")) {
+    Write-Host "  Updating startupjet itself..." -ForegroundColor Cyan
+    $prevDir = Get-Location
+    Set-Location $PSScriptRoot
+    $pullResult = git pull 2>&1
+    Set-Location $prevDir
+    if ($LASTEXITCODE -eq 0) {
+      Write-Host "  [OK] startupjet repo updated" -ForegroundColor Green
+    } else {
+      Write-Host "  [--] git pull failed (offline or conflicts)" -ForegroundColor Yellow
+    }
+    Write-Host ""
+  }
+
+  Write-Host "  Upgrading installed tools..." -ForegroundColor Cyan
   Refresh-SessionPath
 
   if ($alreadyInstalled.Count -eq 0) {
@@ -378,15 +488,156 @@ if ($notInstalled.Count -eq 0) {
     Write-Host ""
   }
 
+  # Model recommendations based on hardware scan
+  $script:recommendedModels = @()
+  if ($script:localAiCapable) {
+    $installedModels = @($catalog | Where-Object { $_.method -eq "ollama" -and $_.minVRAM -and $_.minVRAM -gt 0 -and $_.installed })
+    if ($installedModels.Count -gt 0) {
+      Write-Host ""
+      $installedNames = ($installedModels | ForEach-Object { $_.name }) -join ", "
+      Write-Host "  Already installed: $installedNames" -ForegroundColor Green
+    }
+
+    $modelCandidates = @($catalog | Where-Object { $_.method -eq "ollama" -and $_.minVRAM -and $_.minVRAM -gt 0 -and -not $_.installed })
+    $script:recommendedModels = @(Get-RecommendedModels -models $modelCandidates -vram $vramGB -ram $ramGB -diskFree $freeGB)
+    if ($script:recommendedModels.Count -gt 0) {
+      Write-Host ""
+      Write-Host "  Best models to add for your hardware ($vramGB GB VRAM, $ramGB GB RAM, $freeGB GB free):" -ForegroundColor Cyan
+      $rank = 0
+      foreach ($rm in $script:recommendedModels) {
+        $rank++
+        $fit = if ($vramGB -ge $rm.recVRAM) { "full GPU speed" } else { "runs with CPU offload" }
+        Write-Host ("    $rank. $($rm.name) ($($rm.size)) [$fit]") -ForegroundColor Green
+        Write-Host ("       $($rm.desc)") -ForegroundColor DarkGray
+      }
+      Write-Host ""
+    } elseif ($modelCandidates.Count -eq 0 -and $installedModels.Count -gt 0) {
+      Write-Host "  All compatible models are already installed." -ForegroundColor Green
+      Write-Host ""
+    }
+  }
+
+  # --- Preset profiles ---
+  Write-Host "  Setup profile:" -ForegroundColor White
+  Write-Host ""
+  Write-Host "    [A] Minimal dev    (Git, gh, Python, Node, pwsh, OpenSSH)" -ForegroundColor Cyan
+  Write-Host "    [B] Developer      (A + VS Code, Tailscale, cloudflared, dev settings)" -ForegroundColor Cyan
+  if ($script:localAiCapable) {
+    Write-Host "    [C] AI workstation (B + Claude Code, Ollama, recommended models)" -ForegroundColor Cyan
+  }
+  Write-Host "    [D] Custom         (choose everything yourself)" -ForegroundColor Cyan
+  Write-Host ""
+  $presetChoice = Read-Host "  Profile [A/B/C/D]"
+
+  $presetCategories = @()
+  switch ($presetChoice.ToUpper()) {
+    "A" {
+      $presetNames = @("Git", "GitHub CLI", "Python 3", "PowerShell 7", "OpenSSH", "Node.js")
+      foreach ($item in $notInstalled) {
+        if ($presetNames -contains $item.name) { $item.selected = $true }
+      }
+      $script:installScope = "user"
+      $authGh = $true; $authTailscale = $false; $authCloudflare = $false
+      $sshKeyPath = Join-Path $env:USERPROFILE ".ssh\id_ed25519"
+      $generateSshKey = -not (Test-Path $sshKeyPath)
+      $applyDevSettings = $false
+      $installExtensions = $false; $extList = @()
+      $script:presetApplied = $true
+      Write-Host "  Profile: Minimal dev" -ForegroundColor Green
+    }
+    "B" {
+      $presetNames = @("Git", "GitHub CLI", "Python 3", "PowerShell 7", "OpenSSH", "Node.js", "VS Code", "Tailscale", "cloudflared")
+      foreach ($item in $notInstalled) {
+        if ($presetNames -contains $item.name) { $item.selected = $true }
+      }
+      $script:installScope = "user"
+      $authGh = $true; $authTailscale = $true; $authCloudflare = $true
+      $sshKeyPath = Join-Path $env:USERPROFILE ".ssh\id_ed25519"
+      $generateSshKey = -not (Test-Path $sshKeyPath)
+      $applyDevSettings = $true
+      $installExtensions = $false; $extList = @()
+      $extConfigPath = Join-Path $PSScriptRoot "config\vscode-extensions.json"
+      if (Test-Path $extConfigPath) {
+        try { $extData = Get-Content $extConfigPath -Raw | ConvertFrom-Json; $extList = @($extData.extensions); $installExtensions = $extList.Count -gt 0 } catch {}
+      }
+      $script:presetApplied = $true
+      Write-Host "  Profile: Developer" -ForegroundColor Green
+    }
+    "C" {
+      if (-not $script:localAiCapable) {
+        Write-Host "  AI workstation not available (hardware scan showed local AI not supported). Using Developer profile." -ForegroundColor Yellow
+        $presetChoice = "B"
+      }
+      $presetNames = @("Git", "GitHub CLI", "Python 3", "PowerShell 7", "OpenSSH", "Node.js", "VS Code", "Tailscale", "cloudflared", "Claude Code", "OpenAI Codex", "Ollama", "uv")
+      foreach ($item in $notInstalled) {
+        if ($presetNames -contains $item.name) { $item.selected = $true }
+      }
+      # Select recommended models
+      if ($script:recommendedModels.Count -gt 0) {
+        $recIds = $script:recommendedModels | ForEach-Object { $_.id }
+        foreach ($item in $catalog) {
+          if ($recIds -contains $item.id) { $item.selected = $true }
+        }
+      }
+      # Select cloud models
+      foreach ($item in $notInstalled) {
+        if ($item.category -eq "model-cloud") { $item.selected = $true }
+      }
+      $script:installScope = "user"
+      $authGh = $true; $authTailscale = $true; $authCloudflare = $true
+      $sshKeyPath = Join-Path $env:USERPROFILE ".ssh\id_ed25519"
+      $generateSshKey = -not (Test-Path $sshKeyPath)
+      $applyDevSettings = $true
+      $installExtensions = $false; $extList = @()
+      $extConfigPath = Join-Path $PSScriptRoot "config\vscode-extensions.json"
+      if (Test-Path $extConfigPath) {
+        try { $extData = Get-Content $extConfigPath -Raw | ConvertFrom-Json; $extList = @($extData.extensions); $installExtensions = $extList.Count -gt 0 } catch {}
+      }
+      $script:presetApplied = $true
+      Write-Host "  Profile: AI workstation" -ForegroundColor Green
+    }
+  }
+
+  if ($script:presetApplied) {
+    # Load workspace defaults
+    $defaultsPath = Join-Path $PSScriptRoot "config\defaults.json"
+    $workspacePath = "D:\aijetlabs"; $githubUser = "jeremytrindade"; $gitEmail = "jeremytrindade@gmail.com"
+    if (Test-Path $defaultsPath) {
+      try {
+        $defs = Get-Content $defaultsPath -Raw | ConvertFrom-Json
+        if ($defs.workspacePath) { $workspacePath = $defs.workspacePath }
+        if ($defs.githubUser)    { $githubUser = $defs.githubUser }
+        if ($defs.gitEmail)      { $gitEmail = $defs.gitEmail }
+      } catch {}
+    }
+
+    $selectedCount = @($catalog | Where-Object { $_.selected }).Count
+    Write-Host "  Selected: $selectedCount items" -ForegroundColor Green
+    Write-Host "  Workspace: $workspacePath" -ForegroundColor DarkGray
+    Write-Host "  Git: $githubUser <$gitEmail>" -ForegroundColor DarkGray
+    if ($generateSshKey) { Write-Host "  SSH key: will generate" -ForegroundColor DarkGray }
+    if ($applyDevSettings) { Write-Host "  Dev settings: on" -ForegroundColor DarkGray }
+    if ($installExtensions) { Write-Host "  VS Code extensions: $($extList.Count)" -ForegroundColor DarkGray }
+  }
+
+  if (-not $script:presetApplied) {
+
   $localAiCount = @($notInstalled | Where-Object { $_.category -eq "local-ai" -or $_.category -eq "model" -or $_.category -eq "model-lg" }).Count
   $nonLocalCount = $notInstalled.Count - $localAiCount
 
   Write-Host "  What would you like to install?" -ForegroundColor White
   Write-Host ""
-  Write-Host "    [1] Install everything ($($notInstalled.Count) items)" -ForegroundColor $(if ($script:localAiCapable) { "Cyan" } else { "Yellow" })
+  if ($script:recommendedModels.Count -gt 0) {
+    Write-Host "    [1] Install all tools + recommended models" -ForegroundColor Cyan
+  } else {
+    Write-Host "    [1] Install everything ($($notInstalled.Count) items)" -ForegroundColor $(if ($script:localAiCapable) { "Cyan" } else { "Yellow" })
+  }
   Write-Host "    [2] Install everything EXCEPT local AI + models ($nonLocalCount items)" -ForegroundColor Cyan
   Write-Host "    [3] Customize (pick from the list)" -ForegroundColor Cyan
   Write-Host "    [4] Skip installs (only authenticate + configure + clone)" -ForegroundColor Cyan
+  if ($script:recommendedModels.Count -gt 0) {
+    Write-Host "    [5] Install everything including ALL models ($($notInstalled.Count) items)" -ForegroundColor Yellow
+  }
 
   if (-not $script:localAiCapable) {
     Write-Host ""
@@ -394,11 +645,25 @@ if ($notInstalled.Count -eq 0) {
   }
 
   Write-Host ""
-  $mode = Read-Host "  Choose [1/2/3/4]"
+  $choices = if ($script:recommendedModels.Count -gt 0) { "1/2/3/4/5" } else { "1/2/3/4" }
+  $mode = Read-Host "  Choose [$choices]"
 
   switch ($mode) {
     "1" {
-      if (-not $script:localAiCapable) {
+      if ($script:recommendedModels.Count -gt 0) {
+        foreach ($item in $notInstalled) {
+          if ($item.category -notin @("model", "model-lg")) {
+            $item.selected = $true
+          }
+        }
+        $recIds = $script:recommendedModels | ForEach-Object { $_.id }
+        foreach ($item in $catalog) {
+          if ($recIds -contains $item.id) { $item.selected = $true }
+        }
+        $selectedCount = @($catalog | Where-Object { $_.selected }).Count
+        $modelNames = ($script:recommendedModels | ForEach-Object { $_.name }) -join ", "
+        Write-Host "  Selected: $selectedCount items (models: $modelNames)" -ForegroundColor Green
+      } elseif (-not $script:localAiCapable) {
         Write-Host ""
         Write-Host "  Warning: your hardware scan showed local AI may not work on this PC." -ForegroundColor Yellow
         $confirm = Read-Host "  Install local AI anyway? [y/N]"
@@ -419,6 +684,10 @@ if ($notInstalled.Count -eq 0) {
         Write-Host "  Selected: everything ($($notInstalled.Count) items)" -ForegroundColor Green
       }
     }
+    "5" {
+      foreach ($item in $notInstalled) { $item.selected = $true }
+      Write-Host "  Selected: everything including all models ($($notInstalled.Count) items)" -ForegroundColor Green
+    }
     "2" {
       foreach ($item in $notInstalled) {
         if ($item.category -ne "local-ai" -and $item.category -ne "model" -and $item.category -ne "model-lg") {
@@ -434,7 +703,8 @@ if ($notInstalled.Count -eq 0) {
       Write-Host ""
 
       $localAiLabel = if ($script:localAiCapable) { "Local AI (GPU: $gpuName, $vramGB GB VRAM)" } else { "Local AI (GPU: NOT RECOMMENDED for this PC)" }
-      $modelLabel   = if ($script:localAiCapable) { "AI models via Ollama (~13.7 GB total)" } else { "AI models via Ollama (NOT RECOMMENDED, see hardware scan)" }
+      $modelTotalGB = [math]::Round(($catalog | Where-Object { $_.category -eq "model" -and -not $_.installed } | ForEach-Object { $_.downloadMB } | Measure-Object -Sum).Sum / 1024, 1)
+      $modelLabel   = if ($script:localAiCapable) { "AI models via Ollama (~$modelTotalGB GB total)" } else { "AI models via Ollama (NOT RECOMMENDED, see hardware scan)" }
       $modelLgLabel = if ($script:localAiCapable) { "Larger AI models (need 16+ GB VRAM)" } else { "Larger AI models (NOT RECOMMENDED, need 16+ GB VRAM)" }
       $categoryLabels = @{
         "dev"         = "Dev tools"
@@ -445,6 +715,7 @@ if ($notInstalled.Count -eq 0) {
         "model-lg"    = $modelLgLabel
         "model-cloud" = "Cloud AI models (runs on Ollama cloud, no local GPU needed)"
       }
+      $recIds = @($script:recommendedModels | ForEach-Object { $_.id })
       $lastCategory = ""
       foreach ($item in $notInstalled) {
         if ($item.category -ne $lastCategory) {
@@ -452,7 +723,9 @@ if ($notInstalled.Count -eq 0) {
           Write-Host ("    --- " + $categoryLabels[$item.category] + " ---") -ForegroundColor Cyan
         }
         $sizeNote = if ($item.size) { " ($($item.size))" } else { "" }
-        Write-Host ("    [$($item.id)] $($item.name)$sizeNote")
+        $recTag = if ($recIds -contains $item.id) { " [REC]" } else { "" }
+        $color = if ($recIds -contains $item.id) { "Green" } else { "White" }
+        Write-Host ("    [$($item.id)] $($item.name)$sizeNote$recTag") -ForegroundColor $color
       }
 
       Write-Host ""
@@ -517,7 +790,11 @@ if ($notInstalled.Count -eq 0) {
       }
     }
   }
+
+  } # end if (-not $script:presetApplied)
 }
+
+if (-not $script:presetApplied) {
 
 # --- Install scope ---
 $script:installScope = "user"
@@ -531,6 +808,25 @@ if ($toInstall.Count -gt 0) {
   $scopeChoice = Read-Host "  Choose [1/2]"
   if ($scopeChoice -eq "2") {
     $script:installScope = "machine"
+    if (-not $script:isAdmin) {
+      Write-Host ""
+      Write-Host "  Machine scope requires admin privileges." -ForegroundColor Yellow
+      $elevate = Read-Host "  Re-launch as Administrator? [Y/n]"
+      if ($elevate -ne "n" -and $elevate -ne "N") {
+        $scriptPath = Join-Path $PSScriptRoot "startupjet.ps1"
+        Start-Process pwsh -ArgumentList "-ExecutionPolicy Bypass -NoProfile -File `"$scriptPath`"" -Verb RunAs -ErrorAction SilentlyContinue
+        if ($?) {
+          Write-Host "  Elevated window opened. This window will close." -ForegroundColor Green
+          Stop-Transcript -ErrorAction SilentlyContinue | Out-Null
+          exit 0
+        } else {
+          Write-Host "  Could not elevate. Falling back to user scope." -ForegroundColor Yellow
+          $script:installScope = "user"
+        }
+      } else {
+        Write-Host "  Continuing without admin. Some installs may fail." -ForegroundColor Yellow
+      }
+    }
     Write-Host "  Scope: all users (machine-wide)" -ForegroundColor Green
   } else {
     Write-Host "  Scope: current user only" -ForegroundColor Green
@@ -633,11 +929,67 @@ if ([string]::IsNullOrWhiteSpace($githubUser)) { $githubUser = $defaultGithubUse
 $gitEmail = Read-Host "  Git email [$defaultGitEmail]"
 if ([string]::IsNullOrWhiteSpace($gitEmail)) { $gitEmail = $defaultGitEmail }
 
+} # end if (-not $script:presetApplied)
+
 # =====================================================================
 # From here on, NO MORE USER INPUT. Everything runs unattended.
 # =====================================================================
 
 Write-Host ""
+
+if ($DryRun) {
+  Write-Host ("=" * 60) -ForegroundColor Yellow
+  Write-Host " DRY RUN, nothing will be changed" -ForegroundColor Yellow
+  Write-Host ("=" * 60) -ForegroundColor Yellow
+
+  Write-Phase "DRY RUN SUMMARY"
+
+  $toInstall = @($catalog | Where-Object { $_.selected })
+  if ($toInstall.Count -gt 0) {
+    Write-Host "  Would install:" -ForegroundColor White
+    foreach ($item in $toInstall) {
+      $sizeNote = if ($item.size) { " ($($item.size))" } else { "" }
+      Write-Host ("    + $($item.name)$sizeNote") -ForegroundColor Cyan
+    }
+  } else {
+    Write-Host "  Nothing to install." -ForegroundColor DarkGray
+  }
+
+  Write-Host ""
+  Write-Host "  Would authenticate:" -ForegroundColor White
+  if ($authGh)         { Write-Host "    + GitHub CLI" -ForegroundColor Cyan }
+  if ($authTailscale)  { Write-Host "    + Tailscale" -ForegroundColor Cyan }
+  if ($authCloudflare) { Write-Host "    + cloudflared" -ForegroundColor Cyan }
+  if (-not $authGh -and -not $authTailscale -and -not $authCloudflare) { Write-Host "    (none)" -ForegroundColor DarkGray }
+
+  Write-Host ""
+  Write-Host "  Would configure:" -ForegroundColor White
+  Write-Host "    git user.name = $githubUser" -ForegroundColor Cyan
+  Write-Host "    git user.email = $gitEmail" -ForegroundColor Cyan
+  Write-Host "    Install scope: $script:installScope" -ForegroundColor Cyan
+  if ($generateSshKey) { Write-Host "    Generate SSH key (ed25519)" -ForegroundColor Cyan }
+  if ($applyDevSettings) { Write-Host "    Apply Windows dev settings" -ForegroundColor Cyan }
+  if ($installExtensions) { Write-Host "    Install $($extList.Count) VS Code extensions" -ForegroundColor Cyan }
+
+  Write-Host ""
+  Write-Host "  Would clone repos to: $workspacePath\github\" -ForegroundColor White
+  $reposJsonPath = Join-Path $PSScriptRoot "config\repos.json"
+  if (Test-Path $reposJsonPath) {
+    $reposData = Get-Content $reposJsonPath -Raw | ConvertFrom-Json
+    foreach ($r in $reposData.repos) {
+      $dest = Join-Path $workspacePath "github\$($r.name)"
+      $exists = if (Test-Path $dest) { " [already exists]" } else { "" }
+      $shallow = if ($r.shallow -eq $true) { " (shallow)" } else { "" }
+      Write-Host ("    + $($r.owner)/$($r.name)$shallow$exists") -ForegroundColor Cyan
+    }
+  }
+
+  Write-Host ""
+  Write-Host "  Re-run without -DryRun to execute." -ForegroundColor Green
+  Write-Host ""
+  exit 0
+}
+
 Write-Host ("=" * 60) -ForegroundColor Green
 Write-Host " All questions answered. Running unattended from here." -ForegroundColor Green
 Write-Host " You can walk away. Come back when it is done." -ForegroundColor Green
@@ -689,31 +1041,75 @@ if (Test-Command "git") {
   Write-Host "  [defer] git not installed yet, will configure after install" -ForegroundColor Yellow
 }
 
-# SSH key generation
-if ($generateSshKey) {
+# SSH key: try vault first, then generate
+$sshKeyRestored = $false
+if ($generateSshKey -and (Test-Command "bw")) {
+  Write-Host ""
+  Write-Host "  Bitwarden vault detected. Checking for existing SSH key..."
+  $bwStatus = bw status 2>&1 | ConvertFrom-Json -ErrorAction SilentlyContinue
+  if ($bwStatus.status -eq "locked" -or $bwStatus.status -eq "unauthenticated") {
+    if (-not $DryRun) {
+      Write-Host "  Unlocking Bitwarden vault..."
+      $env:BW_SESSION = bw unlock --raw 2>&1
+      if (-not $env:BW_SESSION) {
+        $env:BW_SESSION = bw login --raw 2>&1
+      }
+    }
+  }
+  if ($env:BW_SESSION -or $bwStatus.status -eq "unlocked") {
+    $sshItems = bw list items --search "ssh key" --session $env:BW_SESSION 2>&1 | ConvertFrom-Json -ErrorAction SilentlyContinue
+    if ($sshItems -and $sshItems.Count -gt 0) {
+      $sshItem = $sshItems[0]
+      $sshDir = Join-Path $env:USERPROFILE ".ssh"
+      if (-not (Test-Path $sshDir)) { New-Item -ItemType Directory -Force -Path $sshDir | Out-Null }
+      if (-not $DryRun) {
+        foreach ($att in (bw list item-attachments $sshItem.id --session $env:BW_SESSION 2>&1 | ConvertFrom-Json -ErrorAction SilentlyContinue)) {
+          bw get attachment $att.id --itemid $sshItem.id --output (Join-Path $sshDir $att.fileName) --session $env:BW_SESSION 2>&1 | Out-Null
+        }
+        if (Test-Path $sshKeyPath) {
+          Write-Host "  [OK] SSH key restored from vault" -ForegroundColor Green
+          $sshKeyRestored = $true
+        }
+      } else {
+        Write-Host "  [DRY RUN] Would restore SSH key from vault item: $($sshItem.name)" -ForegroundColor Yellow
+        $sshKeyRestored = $true
+      }
+    }
+  }
+}
+
+if ($generateSshKey -and -not $sshKeyRestored) {
   $sshDir = Join-Path $env:USERPROFILE ".ssh"
   if (-not (Test-Path $sshDir)) {
     New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
   }
-  Write-Host "  Generating SSH key (ed25519)..."
-  ssh-keygen -t ed25519 -C $gitEmail -f $sshKeyPath -N '""' -q 2>&1 | Out-Null
   if (Test-Path $sshKeyPath) {
-    Write-Host "  [OK] SSH key: $sshKeyPath" -ForegroundColor Green
-    # Add to GitHub if gh is authenticated
-    if (Test-Command "gh") {
-      $ghCheck = gh auth status 2>&1
-      if ($LASTEXITCODE -eq 0) {
-        $keyTitle = "startupjet $(hostname) $(Get-Date -Format 'yyyy-MM-dd')"
-        gh ssh-key add "$sshKeyPath.pub" --title $keyTitle 2>&1 | Out-Null
-        if ($LASTEXITCODE -eq 0) {
-          Write-Host "  [OK] SSH key added to GitHub ($keyTitle)" -ForegroundColor Green
-        } else {
-          Write-Host "  [--] Could not add SSH key to GitHub (will retry after auth)" -ForegroundColor Yellow
-        }
-      }
-    }
+    Write-Host "  [OK] SSH key already exists: $sshKeyPath" -ForegroundColor Green
   } else {
-    Write-Host "  [FAIL] SSH key generation failed" -ForegroundColor Red
+    Write-Host "  Generating SSH key (ed25519)..."
+    if (-not $DryRun) {
+      ssh-keygen -t ed25519 -C $gitEmail -f $sshKeyPath -N '""' -q 2>&1 | Out-Null
+      if (Test-Path $sshKeyPath) {
+        Write-Host "  [OK] SSH key: $sshKeyPath" -ForegroundColor Green
+      } else {
+        Write-Host "  [FAIL] SSH key generation failed" -ForegroundColor Red
+      }
+    } else {
+      Write-Host "  [DRY RUN] Would generate SSH key at $sshKeyPath" -ForegroundColor Yellow
+    }
+  }
+}
+
+if ($generateSshKey -and (Test-Path "$sshKeyPath.pub") -and (Test-Command "gh") -and -not $DryRun) {
+  $ghCheck = gh auth status 2>&1
+  if ($LASTEXITCODE -eq 0) {
+    $keyTitle = "startupjet $(hostname) $(Get-Date -Format 'yyyy-MM-dd')"
+    gh ssh-key add "$sshKeyPath.pub" --title $keyTitle 2>&1 | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+      Write-Host "  [OK] SSH key added to GitHub ($keyTitle)" -ForegroundColor Green
+    } else {
+      Write-Host "  [--] Could not add SSH key to GitHub (may already exist)" -ForegroundColor Yellow
+    }
   }
 }
 
@@ -733,15 +1129,19 @@ if ($applyDevSettings) {
   } catch {
     Write-Host "  [FAIL] Show hidden files: $_" -ForegroundColor Red
   }
-  try {
-    reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /t REG_DWORD /f /v AllowDevelopmentWithoutDevLicense /d 1 2>&1 | Out-Null
-    if ($LASTEXITCODE -eq 0) {
-      Write-Host "  [OK] Developer Mode enabled" -ForegroundColor Green
-    } else {
-      Write-Host "  [--] Developer Mode requires admin (run as Administrator to enable)" -ForegroundColor Yellow
+  if ($script:isAdmin) {
+    try {
+      reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /t REG_DWORD /f /v AllowDevelopmentWithoutDevLicense /d 1 2>&1 | Out-Null
+      if ($LASTEXITCODE -eq 0) {
+        Write-Host "  [OK] Developer Mode enabled" -ForegroundColor Green
+      } else {
+        Write-Host "  [FAIL] Developer Mode registry write failed" -ForegroundColor Red
+      }
+    } catch {
+      Write-Host "  [FAIL] Developer Mode: $_" -ForegroundColor Red
     }
-  } catch {
-    Write-Host "  [--] Developer Mode requires admin (run as Administrator to enable)" -ForegroundColor Yellow
+  } else {
+    Write-Host "  [skip] Developer Mode requires admin (re-run as Administrator)" -ForegroundColor Yellow
   }
 }
 
@@ -862,6 +1262,29 @@ if ($toInstall.Count -eq 0) {
       Write-Host "  Ollama not available. Skipping model downloads." -ForegroundColor Yellow
       foreach ($m in $modelItems) { $script:summary.failed += $m.name }
     } else {
+      # Ensure Ollama service is running before pulling models
+      $ollamaReady = $false
+      try {
+        ollama list 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) { $ollamaReady = $true }
+      } catch {}
+      if (-not $ollamaReady) {
+        Write-Host "  Starting Ollama service..." -ForegroundColor Yellow
+        Start-Process "ollama" -ArgumentList "serve" -WindowStyle Hidden -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 3
+        try {
+          ollama list 2>&1 | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "  [OK] Ollama service started" -ForegroundColor Green
+            $ollamaReady = $true
+          }
+        } catch {}
+        if (-not $ollamaReady) {
+          Write-Host "  [FAIL] Could not start Ollama service. Skipping model downloads." -ForegroundColor Red
+          foreach ($m in $modelItems) { $script:summary.failed += $m.name }
+        }
+      }
+      if (-not $ollamaReady) { $modelItems = @() }
       foreach ($item in $modelItems) {
         if ($script:progress.completed -contains $item.name) {
           Write-Host ("  [skip] $($item.name) (completed in previous run)") -ForegroundColor DarkGray
@@ -947,6 +1370,65 @@ if ($toInstall.Count -eq 0) {
 }
 
 # =====================================================================
+# PHASE 5.5: DOTFILES (unattended)
+# =====================================================================
+$dotfilesCfg = Join-Path $PSScriptRoot "config\dotfiles.json"
+if ((Test-Path $dotfilesCfg)) {
+  $dotData = Get-Content $dotfilesCfg -Raw | ConvertFrom-Json
+  $dotRepo = $dotData.repo
+  $dotFiles = $dotData.files
+
+  if ($dotRepo -and $dotRepo.Length -gt 0) {
+    Write-Phase "PHASE 5.5, dotfiles"
+
+    $dotDir = Join-Path $env:USERPROFILE ".dotfiles"
+    if (-not (Test-Path $dotDir)) {
+      Write-Host "  Cloning dotfiles from $dotRepo..."
+      if (-not $DryRun) {
+        git clone $dotRepo $dotDir 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+          Write-Host "  [OK] Dotfiles cloned" -ForegroundColor Green
+        } else {
+          Write-Host "  [FAIL] Dotfiles clone failed" -ForegroundColor Red
+        }
+      } else {
+        Write-Host "  [DRY RUN] Would clone $dotRepo to $dotDir" -ForegroundColor Yellow
+      }
+    } else {
+      Write-Host "  [OK] Dotfiles already cloned at $dotDir" -ForegroundColor Green
+      if (-not $DryRun) {
+        git -C $dotDir pull --ff-only 2>&1 | Out-Null
+      }
+    }
+
+    if ((Test-Path $dotDir) -and -not $DryRun) {
+      $dotFiles.PSObject.Properties | ForEach-Object {
+        $src = Join-Path $dotDir $_.Name
+        $dst = $_.Value -replace "~", $env:USERPROFILE
+        if (-not (Test-Path $src)) {
+          Write-Host "  [skip] Source not found: $($_.Name)" -ForegroundColor Yellow
+          return
+        }
+        $dstDir = Split-Path $dst -Parent
+        if (-not (Test-Path $dstDir)) { New-Item -ItemType Directory -Force -Path $dstDir | Out-Null }
+        if (Test-Path $dst) {
+          $backup = "$dst.backup"
+          Copy-Item $dst $backup -Force
+          Write-Host "  Backed up $dst" -ForegroundColor DarkGray
+        }
+        Copy-Item $src $dst -Force
+        Write-Host "  [OK] $($_.Name) -> $dst" -ForegroundColor Green
+      }
+    } elseif ($DryRun) {
+      $dotFiles.PSObject.Properties | ForEach-Object {
+        $dst = $_.Value -replace "~", $env:USERPROFILE
+        Write-Host "  [DRY RUN] Would copy $($_.Name) -> $dst" -ForegroundColor Yellow
+      }
+    }
+  }
+}
+
+# =====================================================================
 # PHASE 6: CLONE REPOS (unattended)
 # =====================================================================
 Write-Phase "PHASE 6, clone repos"
@@ -965,15 +1447,40 @@ if (Test-Path $reposJsonPath) {
   )
 }
 
+# Prefer SSH clone if SSH key exists and gh is authenticated (enables push without reconfiguring remotes)
+$preferSsh = $false
+if ((Test-Path "$sshKeyPath") -and (Test-Command "gh")) {
+  $ghStatus = gh auth status 2>&1
+  if ($LASTEXITCODE -eq 0) { $preferSsh = $true }
+}
+if ($preferSsh) {
+  Write-Host "  Using SSH clone (SSH key + gh auth detected)" -ForegroundColor Cyan
+} else {
+  Write-Host "  Using HTTPS clone" -ForegroundColor DarkGray
+}
+Write-Host ""
+
 foreach ($repo in $repos) {
-  $url  = "https://github.com/$($repo.owner)/$($repo.name).git"
+  $url = if ($preferSsh) { "git@github.com:$($repo.owner)/$($repo.name).git" } else { "https://github.com/$($repo.owner)/$($repo.name).git" }
   $dest = Join-Path $githubFolder $repo.name
   if (Test-Path $dest) {
-    Write-Host ("  [skip] " + $repo.name + " already exists")
+    Write-Host ("  [pull] " + $repo.name + " already exists, updating...")
+    git -C $dest pull --ff-only 2>&1 | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+      Write-Host ("  [OK] " + $repo.name + " updated") -ForegroundColor Green
+    } else {
+      Write-Host ("  [OK] " + $repo.name + " (pull skipped, may have local changes)") -ForegroundColor Yellow
+    }
     continue
   }
-  Write-Host ("  cloning " + $repo.name + "...")
-  git clone $url $dest 2>&1 | Out-Null
+  $shallow = if ($repo.shallow -eq $true) { "--depth 1" } else { "" }
+  $shallowNote = if ($repo.shallow -eq $true) { " (shallow)" } else { "" }
+  Write-Host ("  cloning " + $repo.name + "$shallowNote...")
+  if ($repo.shallow -eq $true) {
+    git clone --depth 1 $url $dest 2>&1 | Out-Null
+  } else {
+    git clone $url $dest 2>&1 | Out-Null
+  }
   if ($LASTEXITCODE -eq 0) {
     Write-Host ("  [OK] " + $repo.name) -ForegroundColor Green
     $script:summary.reposCloned += $repo.name
@@ -985,6 +1492,85 @@ foreach ($repo in $repos) {
     }
     $script:summary.reposSkipped += $repo.name
   }
+}
+
+# Post-clone dependency install
+$clonedWithDeps = @()
+foreach ($repoName in $script:summary.reposCloned) {
+  $repoPath = Join-Path $githubFolder $repoName
+  $pkgJson = Join-Path $repoPath "package.json"
+  $reqTxt  = Join-Path $repoPath "requirements.txt"
+  if (Test-Path $pkgJson) { $clonedWithDeps += @{ name = $repoName; path = $repoPath; type = "npm" } }
+  if (Test-Path $reqTxt)  { $clonedWithDeps += @{ name = $repoName; path = $repoPath; type = "pip" } }
+}
+
+if ($clonedWithDeps.Count -gt 0) {
+  Write-Host ""
+  Write-Host "  Installing dependencies for cloned repos..." -ForegroundColor Cyan
+  foreach ($dep in $clonedWithDeps) {
+    if ($dep.type -eq "npm" -and (Test-Command "npm")) {
+      Write-Host "  $($dep.name): npm install..."
+      $prevDir = Get-Location
+      Set-Location $dep.path
+      npm install 2>&1 | Out-Null
+      Set-Location $prevDir
+      if ($LASTEXITCODE -eq 0) {
+        Write-Host "  [OK] $($dep.name) npm dependencies" -ForegroundColor Green
+      } else {
+        Write-Host "  [--] $($dep.name) npm install had issues" -ForegroundColor Yellow
+      }
+    }
+    if ($dep.type -eq "pip" -and (Test-Command "python")) {
+      Write-Host "  $($dep.name): pip install -r requirements.txt..."
+      $prevDir = Get-Location
+      Set-Location $dep.path
+      python -m pip install -r requirements.txt 2>&1 | Out-Null
+      Set-Location $prevDir
+      if ($LASTEXITCODE -eq 0) {
+        Write-Host "  [OK] $($dep.name) pip dependencies" -ForegroundColor Green
+      } else {
+        Write-Host "  [--] $($dep.name) pip install had issues" -ForegroundColor Yellow
+      }
+    }
+  }
+}
+
+# =====================================================================
+# PHASE 6.5: POST-CLONE INTEGRATION (jet-rules + extended rules + workspace setup)
+# =====================================================================
+
+# Layer 1: jet-rules (universal open-source rules)
+$jetRulesDir = Join-Path $githubFolder "jet-rules"
+$jetRulesSource = Join-Path $jetRulesDir "rules.md"
+if (Test-Path $jetRulesSource) {
+  $jetRulesDest = Join-Path $workspacePath "jet-rules.md"
+  Copy-Item $jetRulesSource $jetRulesDest -Force
+  Write-Host "  [OK] jet-rules.md copied to $jetRulesDest" -ForegroundColor Green
+}
+
+# Layer 2: extended rules (from jet-rules/config.json -> extended.repo)
+$jetRulesConfig = Join-Path $jetRulesDir "config.json"
+if (Test-Path $jetRulesConfig) {
+  try {
+    $jrCfg = Get-Content $jetRulesConfig -Raw | ConvertFrom-Json
+    $extFile = $jrCfg.extended.file
+    if ($extFile) {
+      $extRepoName = ($jrCfg.extended.repo -split "/")[-1]
+      $extSource = Join-Path $githubFolder "$extRepoName\$extFile"
+      if (Test-Path $extSource) {
+        $extDest = Join-Path $workspacePath $extFile
+        Copy-Item $extSource $extDest -Force
+        Write-Host "  [OK] $extFile (extended rules) copied to $extDest" -ForegroundColor Green
+      }
+    }
+  } catch {}
+}
+
+# Workspace support folders
+$historyDir = Join-Path $workspacePath ".history"
+if (-not (Test-Path $historyDir)) {
+  New-Item -ItemType Directory -Force -Path $historyDir | Out-Null
+  Write-Host "  [OK] Created $historyDir for conversation logging" -ForegroundColor Green
 }
 
 # =====================================================================
@@ -1056,6 +1642,51 @@ if (Test-Command "gh") {
   }
 }
 
+# Functional tests
+Write-Host ""
+Write-Host "  Functional tests..." -ForegroundColor Cyan
+
+if (Test-Command "python") {
+  $pyTest = python -c "import json, os, sys; print(f'python OK, {sys.version.split()[0]}')" 2>&1
+  if ($pyTest -match "OK") {
+    Write-Host "  [OK] Python import test: $pyTest" -ForegroundColor Green
+  } else {
+    Write-Host "  [WARN] Python import test: $pyTest" -ForegroundColor Yellow
+  }
+}
+
+if (Test-Command "node") {
+  $nodeTest = node -e "console.log('node OK, ' + process.version)" 2>&1
+  if ($nodeTest -match "OK") {
+    Write-Host "  [OK] Node.js test: $nodeTest" -ForegroundColor Green
+  } else {
+    Write-Host "  [WARN] Node.js test: $nodeTest" -ForegroundColor Yellow
+  }
+}
+
+if ((Test-Command "ollama") -and $script:summary.modelsLoaded.Count -gt 0) {
+  $testModel = $script:summary.modelsLoaded[0]
+  Write-Host "  Ollama inference test ($testModel)..."
+  $sw = [System.Diagnostics.Stopwatch]::StartNew()
+  $inferenceOut = ollama run $testModel "Say hello in exactly 5 words" 2>&1 | Select-Object -First 3
+  $sw.Stop()
+  if ($LASTEXITCODE -eq 0 -and $inferenceOut) {
+    Write-Host "  [OK] Ollama inference: $($sw.Elapsed.TotalSeconds.ToString('F1'))s" -ForegroundColor Green
+  } else {
+    Write-Host "  [WARN] Ollama inference test did not complete" -ForegroundColor Yellow
+  }
+}
+
+if (Test-Command "git") {
+  $gitUser = git config --global user.name 2>&1
+  $gitMail = git config --global user.email 2>&1
+  if ($gitUser) {
+    Write-Host "  [OK] Git identity: $gitUser <$gitMail>" -ForegroundColor Green
+  } else {
+    Write-Host "  [WARN] Git identity not set" -ForegroundColor Yellow
+  }
+}
+
 # =====================================================================
 # SUMMARY
 # =====================================================================
@@ -1090,4 +1721,6 @@ if ($script:summary.failed.Count -eq 0) {
   Write-Host ""
 }
 
-Stop-Transcript | Out-Null
+} finally {
+  Stop-Transcript -ErrorAction SilentlyContinue | Out-Null
+}
