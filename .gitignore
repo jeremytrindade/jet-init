@@ -1,6 +1,7 @@
 config/user-config.json
 config/progress.json
 debug-testing/
+jet-init-*.log
 startupjet-*.log
 *.tmp
 *.backup

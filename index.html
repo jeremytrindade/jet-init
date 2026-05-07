@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>startupjet, one-click fresh-PC bootstrap</title>
+  <title>jet-init, one-click fresh-PC bootstrap</title>
   <style>
     :root {
       --bg: #0f1117;
@@ -249,7 +249,7 @@
       <span class="badge">winget / brew / apt</span>
     </div>
     <div class="links">
-      <a href="https://github.com/jeremytrindade/startupjet">GitHub</a>
+      <a href="https://github.com/jeremytrindade/jet-init">GitHub</a>
       <a href="workflow.html">Workflow Map</a>
       <a href="README.md">README</a>
       <a href="LICENSE">License</a>
@@ -301,8 +301,8 @@
     <section>
       <h2>Quick start</h2>
       <div class="steps">
-        <div class="step"><p>Clone this repo: <code>git clone https://github.com/jeremytrindade/startupjet.git</code></p></div>
-        <div class="step"><p><strong>Windows:</strong> double-click <code>startupjet.bat</code>. <strong>macOS/Linux:</strong> run <code>./startupjet.sh</code></p></div>
+        <div class="step"><p>Clone this repo: <code>git clone https://github.com/jeremytrindade/jet-init.git</code></p></div>
+        <div class="step"><p><strong>Windows:</strong> double-click <code>jet-init.bat</code>. <strong>macOS/Linux:</strong> run <code>./jet-init.sh</code></p></div>
         <div class="step"><p>Pick a preset (Minimal dev, Developer, AI workstation) or choose Custom.</p></div>
         <div class="step"><p>Answer auth questions (~2 min). Everything after this runs unattended.</p></div>
         <div class="step"><p>Walk away. Come back to a fully configured PC.</p></div>
@@ -370,7 +370,7 @@
         </div>
         <div class="feature">
           <strong>Log file</strong>
-          <p>All output saved to <code>startupjet-YYYY-MM-DD.log</code> automatically.</p>
+          <p>All output saved to <code>jet-init-YYYY-MM-DD.log</code> automatically.</p>
         </div>
       </div>
     </section>
@@ -404,11 +404,11 @@
 
     <section>
       <h2>How it works</h2>
-      <p>Two entry points, same flow. Windows uses <code>startupjet.bat</code> + PowerShell. macOS/Linux uses <code>startupjet.sh</code> + bash. Both read the same <code>config/</code> files.</p>
-      <pre>Windows: startupjet.bat [-Update] [-DryRun]
-  -> pwsh/powershell -ExecutionPolicy Bypass -File startupjet.ps1
+      <p>Two entry points, same flow. Windows uses <code>jet-init.bat</code> + PowerShell. macOS/Linux uses <code>jet-init.sh</code> + bash. Both read the same <code>config/</code> files.</p>
+      <pre>Windows: jet-init.bat [-Update] [-DryRun]
+  -> pwsh/powershell -ExecutionPolicy Bypass -File jet-init.ps1
 
-macOS/Linux: ./startupjet.sh [--update] [--dry-run]
+macOS/Linux: ./jet-init.sh [--update] [--dry-run]
   -> bash + python3 for JSON parsing
 
 Both run the same phases:
@@ -425,13 +425,13 @@ Both run the same phases:
   </div>
 
   <footer>
-    <p>startupjet v1.2 (2026-05-06). MIT License.</p>
-    <p style="margin-top: 6px;">Built by <strong>Jeremy Trindade</strong> · <a href="https://github.com/jeremytrindade/startupjet">GitHub</a></p>
+    <p>jet-init v2.0.0 (2026-05-07). MIT License.</p>
+    <p style="margin-top: 6px;">Built by <strong>Jeremy Trindade</strong> · <a href="https://github.com/jeremytrindade/jet-init">GitHub</a></p>
   </footer>
 
   <script>
     const toggle = document.getElementById('theme-toggle');
-    const saved = localStorage.getItem('startupjet-theme');
+    const saved = localStorage.getItem('jet-init-theme');
     if (saved) {
       document.documentElement.setAttribute('data-theme', saved);
       toggle.textContent = saved === 'light' ? 'Dark' : 'Light';
@@ -444,7 +444,7 @@ Both run the same phases:
       const next = current === 'light' ? 'dark' : 'light';
       document.documentElement.setAttribute('data-theme', next === 'dark' ? '' : next);
       if (next === 'dark') document.documentElement.removeAttribute('data-theme');
-      localStorage.setItem('startupjet-theme', next);
+      localStorage.setItem('jet-init-theme', next);
       toggle.textContent = next === 'light' ? 'Dark' : 'Light';
     });
   </script>

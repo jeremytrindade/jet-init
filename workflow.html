@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>startupjet workflow map</title>
+  <title>jet-init workflow map</title>
   <style>
     :root {
       --bg: #0f1117;
@@ -359,7 +359,7 @@
       <p>Visual breakdown of every phase, decision point, and data dependency. Notes on what could be improved.</p>
       <nav>
         <a href="index.html">Home</a>
-        <a href="https://github.com/jeremytrindade/startupjet">GitHub</a>
+        <a href="https://github.com/jeremytrindade/jet-init">GitHub</a>
         <a href="README.md">README</a>
       </nav>
     </header>
@@ -396,7 +396,7 @@
           <strong>Could improve</strong>
           <ul>
             <li><s>WMI AdapterRAM DWORD cap</s>: done, falls back to registry qwMemorySize (64-bit)</li>
-            <li><s>Cross-platform</s>: done, startupjet.sh detects macOS (system_profiler) and Linux (nvidia-smi/lspci)</li>
+            <li><s>Cross-platform</s>: done, jet-init.sh detects macOS (system_profiler) and Linux (nvidia-smi/lspci)</li>
             <li>AMD ROCm detection: could probe <code>rocminfo</code> or <code>hipconfig</code> to confirm ROCm works</li>
             <li>Multi-GPU: only picks the best GPU, does not report if a second GPU exists</li>
           </ul>
@@ -697,7 +697,7 @@
         <div class="idea low">
           <div class="priority">Done</div>
           <h4>Cross-platform (macOS/Linux)</h4>
-          <p>startupjet.sh reads config/catalog.json for brew/apt installs. Same 7-phase flow, same config files.</p>
+          <p>jet-init.sh reads config/catalog.json for brew/apt installs. Same 7-phase flow, same config files.</p>
         </div>
         <div class="idea low">
           <div class="priority">Done</div>
@@ -760,13 +760,13 @@
   </div>
 
   <footer>
-    <p>startupjet workflow map. Generated 2026-05-06.</p>
-    <p style="margin-top: 6px;"><a href="index.html">Back to startupjet home</a></p>
+    <p>jet-init workflow map. Generated 2026-05-06.</p>
+    <p style="margin-top: 6px;"><a href="index.html">Back to jet-init home</a></p>
   </footer>
 
   <script>
     const toggle = document.getElementById('theme-toggle');
-    const saved = localStorage.getItem('startupjet-theme');
+    const saved = localStorage.getItem('jet-init-theme');
     if (saved) {
       document.documentElement.setAttribute('data-theme', saved);
       toggle.textContent = saved === 'light' ? 'Dark' : 'Light';
@@ -779,7 +779,7 @@
       const next = current === 'light' ? 'dark' : 'light';
       document.documentElement.setAttribute('data-theme', next === 'dark' ? '' : next);
       if (next === 'dark') document.documentElement.removeAttribute('data-theme');
-      localStorage.setItem('startupjet-theme', next);
+      localStorage.setItem('jet-init-theme', next);
       toggle.textContent = next === 'light' ? 'Dark' : 'Light';
     });
   </script>

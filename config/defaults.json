@@ -1,5 +1,5 @@
 {
-  "_about": "Default values for startupjet prompts. Edit these for your own setup. workspacePath is for Windows, workspacePathUnix is for macOS/Linux (~ expands to home).",
+  "_about": "Default values for jet-init prompts. Edit these for your own setup. workspacePath is for Windows, workspacePathUnix is for macOS/Linux (~ expands to home).",
   "workspacePath": "D:\\aijetlabs",
   "workspacePathUnix": "~/workspace",
   "githubUser": "jeremytrindade",

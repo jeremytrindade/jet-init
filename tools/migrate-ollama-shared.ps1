@@ -21,7 +21,7 @@
   Run with:
     Right-click -> Run with PowerShell  (and approve UAC)
     OR
-    Start-Process pwsh -Verb RunAs -ArgumentList "-File D:\aijetlabs\github\startupjet\tools\migrate-ollama-shared.ps1"
+    Start-Process pwsh -Verb RunAs -ArgumentList "-File D:\aijetlabs\github\jet-init\tools\migrate-ollama-shared.ps1"
 
 .PARAMETER Target
   Destination directory. Default: D:\ollama\models. Auto-falls-back to

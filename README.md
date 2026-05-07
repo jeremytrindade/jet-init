@@ -1,10 +1,10 @@
-# startupjet
+# jet-init
 
 > One tool to set up and maintain a developer workstation. Windows-first, macOS and Linux supported. Fork it, edit the `config/` files, run, done.
 
 ## Verbs
 
-`startupjet` is structured like `brew` or `scoop`: one tool, multiple verbs.
+`jet-init` is structured like `brew` or `scoop`: one tool, multiple verbs.
 
 | Verb | What it does |
 |---|---|
@@ -15,11 +15,11 @@
 | `help` | Show usage. |
 
 ```bat
-startupjet                       :: interactive install
-startupjet fix -FullDev          :: consolidate cross-account waste
-startupjet doctor                :: are things okay? (no changes)
-startupjet update                :: upgrade everything
-startupjet install -FullDev -Yes :: unattended, cross-account install
+jet-init                       :: interactive install
+jet-init fix -FullDev          :: consolidate cross-account waste
+jet-init doctor                :: are things okay? (no changes)
+jet-init update                :: upgrade everything
+jet-init install -FullDev -Yes :: unattended, cross-account install
 ```
 
 ## PC type
@@ -62,41 +62,41 @@ After answering the initial questions (~2 min), you can walk away. Come back to 
 
 ### Windows
 
-1. Download this repo as ZIP, OR `gh repo clone jeremytrindade/startupjet`.
+1. Download this repo as ZIP, OR `gh repo clone jeremytrindade/jet-init`.
 2. Extract anywhere.
-3. Double-click `startupjet.bat`.
+3. Double-click `jet-init.bat`.
 4. Pick a preset or choose Custom.
 5. Walk away. Come back when it is done.
 
 ### macOS / Linux
 
 ```bash
-git clone https://github.com/jeremytrindade/startupjet.git
-cd startupjet
-chmod +x startupjet.sh
-./startupjet.sh
+git clone https://github.com/jeremytrindade/jet-init.git
+cd jet-init
+chmod +x jet-init.sh
+./jet-init.sh
 ```
 
 ## Update installed tools
 
 ```
 # Windows
-startupjet.bat -Update
+jet-init.bat -Update
 
 # macOS / Linux
-./startupjet.sh --update
+./jet-init.sh --update
 ```
 
-Pulls the latest startupjet repo (self-update), then runs winget/brew/apt upgrade, npm update, and ollama pull for each detected tool. No questions asked.
+Pulls the latest jet-init repo (self-update), then runs winget/brew/apt upgrade, npm update, and ollama pull for each detected tool. No questions asked.
 
 ## Dry run
 
 ```
 # Windows
-startupjet.bat -DryRun
+jet-init.bat -DryRun
 
 # macOS / Linux
-./startupjet.sh --dry-run
+./jet-init.sh --dry-run
 ```
 
 Shows exactly what would be installed, configured, and cloned without making any changes. Useful for testing on an already-configured PC.
@@ -106,7 +106,7 @@ Shows exactly what would be installed, configured, and cloned without making any
 - **Cross-platform**: Windows (winget), macOS (Homebrew), Linux (apt). Single config, three runners.
 - **Preset profiles**: Minimal dev, Developer, Full setup, or AI workstation. One choice replaces 8 questions.
 - **Install scope** (Windows): current user only or all users (winget `--scope user` vs `--scope machine`).
-- **Log file**: all output saved to `startupjet-YYYY-MM-DD-HHmm.log` automatically.
+- **Log file**: all output saved to `jet-init-YYYY-MM-DD-HHmm.log` automatically.
 - **SSH key from vault**: if Bitwarden CLI is installed and unlocked, restores existing SSH keys from your vault. Falls back to generating a new ed25519 key.
 - **Dotfiles management**: clone your dotfiles repo and symlink/copy files to the right places. Configure in `config/dotfiles.json`.
 - **Resume on failure**: progress saved to `config/progress.json` after each install. Re-run to pick up where it left off.
@@ -173,8 +173,8 @@ Edit `config/defaults.json` to set where repos are cloned and tools are configur
 ## How it works
 
 ```
-Windows: startupjet.bat [-Update] [-DryRun]
-  -> powershell/pwsh -ExecutionPolicy Bypass -File startupjet.ps1
+Windows: jet-init.bat [-Update] [-DryRun]
+  -> powershell/pwsh -ExecutionPolicy Bypass -File jet-init.ps1
     -> Phase 1: Scan (hardware + speed test + tools)
     -> Phase 2: Choose (preset or custom)
     -> Phase 3: Authenticate (gh, tailscale, cloudflared)
@@ -185,7 +185,7 @@ Windows: startupjet.bat [-Update] [-DryRun]
     -> Phase 6: Clone repos (from config/repos.json)
     -> Phase 7: Verify (PATH check + functional tests + timing)
 
-macOS/Linux: ./startupjet.sh [--update] [--dry-run]
+macOS/Linux: ./jet-init.sh [--update] [--dry-run]
   -> Same 7-phase flow using brew (macOS) or apt (Linux)
   -> Reads the same config/ files
   -> Dotfiles use symlinks instead of copies

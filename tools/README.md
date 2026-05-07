@@ -1,6 +1,6 @@
-# startupjet tools
+# jet-init tools
 
-One-off utilities for cleaning up state startupjet itself does not own.
+One-off utilities for cleaning up state jet-init itself does not own.
 
 | Tool | What it consolidates | Run as |
 |---|---|---|
@@ -22,7 +22,7 @@ Right-click migrate-ollama-shared.bat -> Run as administrator
 Or from an elevated PowerShell:
 
 ```powershell
-pwsh -File D:\aijetlabs\github\startupjet\tools\migrate-ollama-shared.ps1
+pwsh -File D:\aijetlabs\github\jet-init\tools\migrate-ollama-shared.ps1
 ```
 
 Or with a custom target path:

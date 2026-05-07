@@ -1,5 +1,5 @@
 {
-  "_about": "Platform-aware tool catalog. Each tool has install methods per OS. startupjet.ps1 uses 'windows', startupjet.sh uses 'macos' or 'linux'. downloadMB and installMin are estimates for time calculations.",
+  "_about": "Platform-aware tool catalog. Each tool has install methods per OS. jet-init.ps1 uses 'windows', jet-init.sh uses 'macos' or 'linux'. downloadMB and installMin are estimates for time calculations.",
   "tools": [
     {
       "id": 1, "name": "Git", "cmd": "git", "category": "dev", "downloadMB": 55, "installMin": 1,

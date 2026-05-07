@@ -9,8 +9,8 @@ DEFAULTS_CFG="$CONFIG_DIR/defaults.json"
 EXTENSIONS_CFG="$CONFIG_DIR/vscode-extensions.json"
 DOTFILES_CFG="$CONFIG_DIR/dotfiles.json"
 PROGRESS_FILE="$CONFIG_DIR/progress.json"
-LOG_FILE="$SCRIPT_DIR/startupjet-$(date +%Y-%m-%d-%H%M).log"
-VERSION="1.2"
+LOG_FILE="$SCRIPT_DIR/jet-init-$(date +%Y-%m-%d-%H%M).log"
+VERSION="2.0.0"
 
 DRY_RUN=false
 UPDATE=false
@@ -19,13 +19,13 @@ for arg in "$@"; do
     --dry-run|-d) DRY_RUN=true ;;
     --update|-u)  UPDATE=true ;;
     --version|-v)
-      echo "startupjet v$VERSION"
+      echo "jet-init v$VERSION"
       exit 0
       ;;
     --help|-h)
-      echo "startupjet v$VERSION - fresh-machine bootstrap for macOS and Linux"
+      echo "jet-init v$VERSION - fresh-machine bootstrap for macOS and Linux"
       echo ""
-      echo "Usage: ./startupjet.sh [--update] [--dry-run] [--version]"
+      echo "Usage: ./jet-init.sh [--update] [--dry-run] [--version]"
       echo "  --update   Upgrade all installed tools to latest"
       echo "  --dry-run  Show what would happen without making changes"
       echo "  --version  Show version"
@@ -146,7 +146,7 @@ phase1_scan() {
   info "Disk free: ${DISK_FREE_GB} GB"
 
   info "Speed test (5 MB from Cloudflare)..."
-  local speed_file="/tmp/startupjet-speedtest"
+  local speed_file="/tmp/jet-init-speedtest"
   local t_start t_end
   t_start=$(python3 -c "import time; print(time.time())")
   curl -sS -o "$speed_file" "https://speed.cloudflare.com/__down?bytes=5000000" 2>/dev/null || true
@@ -604,7 +604,7 @@ for att in json.load(sys.stdin):
     fi
 
     if [[ -f "$ssh_key.pub" ]] && command -v gh &>/dev/null && gh auth status &>/dev/null && ! $DRY_RUN; then
-      gh ssh-key add "$ssh_key.pub" --title "startupjet-$(hostname)-$(date +%Y%m%d)" 2>/dev/null
+      gh ssh-key add "$ssh_key.pub" --title "jet-init-$(hostname)-$(date +%Y%m%d)" 2>/dev/null
       if [[ $? -eq 0 ]]; then
         ok "SSH key added to GitHub"
       else
@@ -1169,9 +1169,9 @@ for m in cat['models']:
 run_update() {
   header "Update mode"
 
-  info "Self-updating startupjet..."
+  info "Self-updating jet-init..."
   if git -C "$SCRIPT_DIR" rev-parse --is-inside-work-tree &>/dev/null; then
-    git -C "$SCRIPT_DIR" pull --ff-only && ok "startupjet updated" || warn "Self-update failed (not a git repo?)"
+    git -C "$SCRIPT_DIR" pull --ff-only && ok "jet-init updated" || warn "Self-update failed (not a git repo?)"
   fi
 
   if [[ "$OS" == "macos" ]] && command -v brew &>/dev/null; then
@@ -1269,7 +1269,7 @@ for r in repos:
 # Main
 # ─────────────────────────────────────────────────────────────────
 main() {
-  log "${BOLD}startupjet v$VERSION${NC} - $(date)"
+  log "${BOLD}jet-init v$VERSION${NC} - $(date)"
   log "Platform: $OS ($(uname -m))"
   echo ""
 
@@ -1355,7 +1355,7 @@ PYEOF
     rm -f "$PROGRESS_FILE"
     info "Progress file cleaned up (all items completed)"
   elif [[ ${#SUMMARY_FAILED[@]} -gt 0 && -f "$PROGRESS_FILE" ]]; then
-    warn "Some items failed. Re-run ./startupjet.sh to retry (progress saved)."
+    warn "Some items failed. Re-run ./jet-init.sh to retry (progress saved)."
   fi
 
   header "Summary"

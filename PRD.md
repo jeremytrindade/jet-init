@@ -1,4 +1,4 @@
-# PRD: startupjet
+# PRD: jet-init
 
 ## What it is
 
@@ -6,7 +6,7 @@ A cross-platform fresh-PC bootstrap tool that installs dev tools, AI models, SSH
 
 ## Why it exists
 
-Setting up a new machine takes hours of manual installs, logins, config tweaks, and repo cloning. startupjet collapses that into one command with all questions asked upfront and the rest running unattended. The user can walk away and come back to a ready workspace.
+Setting up a new machine takes hours of manual installs, logins, config tweaks, and repo cloning. jet-init collapses that into one command with all questions asked upfront and the rest running unattended. The user can walk away and come back to a ready workspace.
 
 ## Who it is for
 

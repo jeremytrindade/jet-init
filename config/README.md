@@ -1,6 +1,6 @@
 # config/
 
-This folder is the only thing you need to edit when forking startupjet. The scripts (`startupjet.ps1`, `startupjet.sh`) read everything from here.
+This folder is the only thing you need to edit when forking jet-init. The scripts (`jet-init.ps1`, `jet-init.sh`) read everything from here.
 
 ## Files
 
@@ -18,7 +18,7 @@ This folder is the only thing you need to edit when forking startupjet. The scri
 2. Edit `defaults.json` with your identity
 3. Edit `repos.json` with your repos
 4. Optionally edit the other files
-5. Run `startupjet.bat` (Windows) or `./startupjet.sh` (macOS/Linux)
+5. Run `jet-init.bat` (Windows) or `./jet-init.sh` (macOS/Linux)
 
 ## Adding a new tool
 

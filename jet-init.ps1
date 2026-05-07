@@ -1,10 +1,10 @@
-# startupjet.ps1, fresh-PC bootstrap orchestrator
+# jet-init.ps1, fresh-PC bootstrap orchestrator
 # Author: Jeremy Trindade. License: MIT.
 #
 # Usage:
-#   startupjet.bat              Normal install (scan, choose, auth, install, clone, verify)
-#   startupjet.bat -Update      Upgrade all installed tools to latest versions
-#   startupjet.bat -DryRun      Show what would happen without doing anything
+#   jet-init.bat              Normal install (scan, choose, auth, install, clone, verify)
+#   jet-init.bat -Update      Upgrade all installed tools to latest versions
+#   jet-init.bat -DryRun      Show what would happen without doing anything
 #
 # Flow: detect -> choose (all questions upfront) -> authenticate -> configure
 #       -> install (unattended) -> clone (unattended) -> verify -> summary
@@ -12,9 +12,9 @@
 param(
   [Parameter(Position=0)]
   [string]$Verb = "",   # positional verb: install | fix | update | doctor | help
-  [switch]$Update,      # alias for: startupjet update
+  [switch]$Update,      # alias for: jet-init update
   [switch]$DryRun,
-  [switch]$Fix,         # alias for: startupjet fix
+  [switch]$Fix,         # alias for: jet-init fix
   [switch]$FullDev,     # full developer PC: cross-account install (Machine scope)
   [switch]$Shared,      # shared PC: per-account install only (User scope)
   [switch]$Yes,         # non-interactive: accept the default answer at every prompt
@@ -41,17 +41,17 @@ elseif ($verbNorm -ne "")         {
   exit 2
 }
 
-$script:VERSION = "1.2"
+$script:VERSION = "2.0.0"
 
 if ($ShowVersion) {
-  Write-Host "startupjet v$script:VERSION"
+  Write-Host "jet-init v$script:VERSION"
   exit 0
 }
 
 if ($Help) {
-  Write-Host "startupjet v$script:VERSION - set up and maintain a Windows dev PC"
+  Write-Host "jet-init v$script:VERSION - set up and maintain a Windows dev PC"
   Write-Host ""
-  Write-Host "Usage: startupjet.bat <verb> [pc-type] [options]"
+  Write-Host "Usage: jet-init.bat <verb> [pc-type] [options]"
   Write-Host ""
   Write-Host "Verbs:"
   Write-Host "  install   Set up this account / PC (default if no verb given)"
@@ -77,11 +77,11 @@ if ($Help) {
   Write-Host "  -Help         Show this help"
   Write-Host ""
   Write-Host "Examples:"
-  Write-Host "  startupjet                      # interactive install"
-  Write-Host "  startupjet install -FullDev     # cross-account install, default answers"
-  Write-Host "  startupjet fix -FullDev -Yes    # consolidate, no prompts"
-  Write-Host "  startupjet doctor               # health check, no changes"
-  Write-Host "  startupjet update               # upgrade installed tools"
+  Write-Host "  jet-init                      # interactive install"
+  Write-Host "  jet-init install -FullDev     # cross-account install, default answers"
+  Write-Host "  jet-init fix -FullDev -Yes    # consolidate, no prompts"
+  Write-Host "  jet-init doctor               # health check, no changes"
+  Write-Host "  jet-init update               # upgrade installed tools"
   exit 0
 }
 
@@ -108,7 +108,7 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 try { $OutputEncoding           = [System.Text.Encoding]::UTF8 } catch {}
 
 # === Log file ===
-$logFile = Join-Path $PSScriptRoot "startupjet-$(Get-Date -Format 'yyyy-MM-dd-HHmm').log"
+$logFile = Join-Path $PSScriptRoot "jet-init-$(Get-Date -Format 'yyyy-MM-dd-HHmm').log"
 Start-Transcript -Path $logFile -Append | Out-Null
 Write-Host "  Log: $logFile" -ForegroundColor DarkGray
 
@@ -470,7 +470,7 @@ function Choose-OllamaStorage {
         }
       }
     } else {
-      Write-Host "  To consolidate, re-run startupjet as admin (UAC) and the migration will run automatically." -ForegroundColor DarkGray
+      Write-Host "  To consolidate, re-run jet-init as admin (UAC) and the migration will run automatically." -ForegroundColor DarkGray
     }
   }
 
@@ -985,7 +985,7 @@ if (-not $Update) {
 
   try {
     $speedTestUrl = "https://speed.cloudflare.com/__down?bytes=5000000"
-    $tempFile = Join-Path $env:TEMP "startupjet-speedtest.bin"
+    $tempFile = Join-Path $env:TEMP "jet-init-speedtest.bin"
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
     Invoke-WebRequest -Uri $speedTestUrl -OutFile $tempFile -UseBasicParsing -ErrorAction Stop | Out-Null
     $sw.Stop()
@@ -1096,15 +1096,15 @@ Write-Host ("  $($alreadyInstalled.Count) installed, $($notInstalled.Count) avai
 if ($Update) {
   Write-Phase "UPDATE MODE"
 
-  # Self-update startupjet if it is a git repo
+  # Self-update jet-init if it is a git repo
   if (Test-Path (Join-Path $PSScriptRoot ".git")) {
-    Write-Host "  Updating startupjet itself..." -ForegroundColor Cyan
+    Write-Host "  Updating jet-init itself..." -ForegroundColor Cyan
     $prevDir = Get-Location
     Set-Location $PSScriptRoot
     $pullResult = git pull 2>&1
     Set-Location $prevDir
     if ($LASTEXITCODE -eq 0) {
-      Write-Host "  [OK] startupjet repo updated" -ForegroundColor Green
+      Write-Host "  [OK] jet-init repo updated" -ForegroundColor Green
     } else {
       Write-Host "  [--] git pull failed (offline or conflicts)" -ForegroundColor Yellow
     }
@@ -1566,7 +1566,7 @@ if ($toInstall.Count -gt 0) {
       Write-Host "  Machine scope requires admin privileges." -ForegroundColor Yellow
       $elevate = Read-Host "  Re-launch as Administrator? [Y/n]"
       if ($elevate -ne "n" -and $elevate -ne "N") {
-        $scriptPath = Join-Path $PSScriptRoot "startupjet.ps1"
+        $scriptPath = Join-Path $PSScriptRoot "jet-init.ps1"
         Start-Process pwsh -ArgumentList "-ExecutionPolicy Bypass -NoProfile -File `"$scriptPath`"" -Verb RunAs -ErrorAction SilentlyContinue
         if ($?) {
           Write-Host "  Elevated window opened. This window will close." -ForegroundColor Green
@@ -1860,7 +1860,7 @@ if ($generateSshKey -and -not $sshKeyRestored) {
 if ($generateSshKey -and (Test-Path "$sshKeyPath.pub") -and (Test-Command "gh") -and -not $DryRun) {
   $ghCheck = gh auth status 2>&1
   if ($LASTEXITCODE -eq 0) {
-    $keyTitle = "startupjet $(hostname) $(Get-Date -Format 'yyyy-MM-dd')"
+    $keyTitle = "jet-init $(hostname) $(Get-Date -Format 'yyyy-MM-dd')"
     gh ssh-key add "$sshKeyPath.pub" --title $keyTitle 2>&1 | Out-Null
     if ($LASTEXITCODE -eq 0) {
       Write-Host "  [OK] SSH key added to GitHub ($keyTitle)" -ForegroundColor Green
@@ -2098,7 +2098,7 @@ if ($toInstall.Count -eq 0) {
       $existingKeys = gh ssh-key list 2>&1
       $pubKeyContent = Get-Content "$sshKeyPath.pub" -Raw
       if ($existingKeys -notmatch [regex]::Escape(($pubKeyContent.Trim().Split(" ")[1]))) {
-        $keyTitle = "startupjet $(hostname) $(Get-Date -Format 'yyyy-MM-dd')"
+        $keyTitle = "jet-init $(hostname) $(Get-Date -Format 'yyyy-MM-dd')"
         gh ssh-key add "$sshKeyPath.pub" --title $keyTitle 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
           Write-Host "  [OK] SSH key added to GitHub" -ForegroundColor Green
@@ -2389,7 +2389,7 @@ if (Test-Path $sshPubPath) {
 Write-Host ""
 $aiJournal = Join-Path $githubFolder "ai-journal"
 if (Test-Path $aiJournal) {
-  $testFile = Join-Path $aiJournal "_startupjet-smoke-test.tmp"
+  $testFile = Join-Path $aiJournal "_jet-init-smoke-test.tmp"
   "smoke test $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" | Out-File $testFile -Encoding UTF8
   Remove-Item $testFile -Force
   Write-Host "  [OK] ai-journal write smoke test passed" -ForegroundColor Green
@@ -2477,7 +2477,7 @@ Write-Host ""
 if ($script:summary.failed.Count -eq 0) {
   Remove-Item $progressPath -Force -ErrorAction SilentlyContinue
 } else {
-  Write-Host "  Some items failed. Re-run startupjet.bat to retry (progress saved)." -ForegroundColor Yellow
+  Write-Host "  Some items failed. Re-run jet-init.bat to retry (progress saved)." -ForegroundColor Yellow
   Write-Host ""
 }
 
