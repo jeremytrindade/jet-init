@@ -2,6 +2,8 @@
 
 > One tool to set up and maintain a developer workstation. Windows-first, macOS and Linux supported. Fork it, edit the `config/` files, run, done.
 
+> **Returning AI session?** Read [`HANDOFF.md`](HANDOFF.md) first to pick up open items from the last session without re-deriving context.
+
 ## Verbs
 
 `jet-init` is structured like `brew` or `scoop`: one tool, multiple verbs.

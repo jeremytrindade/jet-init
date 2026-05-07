@@ -506,6 +506,59 @@ function Get-DirSizeGB {
   } catch { return 0 }
 }
 
+function Update-NextSteps {
+  # Walk NEXT-STEPS.md. For each <!-- step: <id> --> section, if the
+  # corresponding detection passes, remove that section in place. When no
+  # <!-- step: --> markers remain, delete the file.
+  $path = Join-Path $PSScriptRoot "NEXT-STEPS.md"
+  if (-not (Test-Path $path)) { return }
+
+  $detections = @{
+    "cache-tool"   = { -not [string]::IsNullOrWhiteSpace([System.Environment]::GetEnvironmentVariable("NPM_CONFIG_PREFIX","Machine")) }
+    "partials-rm"  = { @(Get-ChildItem "D:\ollama\models\blobs\*-partial*" -ErrorAction SilentlyContinue).Count -eq 0 }
+    "archive-rm"   = { -not (Test-Path "D:\aijetlabs\github\github-sync-all-archive") }
+    "qwen3-pull"   = {
+      try { (& ollama list 2>$null | Out-String) -match "qwen3:30b-a3b" } catch { $false }
+    }
+    "jet-oss-push" = {
+      try { (& gh repo view jeremytrindade/jet-oss --json name 2>$null | Out-String) -match '"name"' } catch { $false }
+    }
+  }
+
+  $content   = Get-Content $path -Raw
+  $original  = $content
+  $cleared   = @()
+
+  foreach ($id in $detections.Keys) {
+    $check = & $detections[$id]
+    if (-not $check) { continue }
+    # Remove from <!-- step: $id --> up to (but not including) the next
+    # <!-- step: --> marker, the trailing horizontal rule, or end-of-file.
+    $pattern = '(?s)<!-- step: ' + [regex]::Escape($id) + ' -->.*?(?=<!-- step:|^---\s*$|\Z)'
+    $next = [regex]::Replace($content, $pattern, "", "Multiline")
+    if ($next -ne $content) {
+      $cleared += $id
+      $content = $next
+    }
+  }
+
+  if ($cleared.Count -gt 0) {
+    Write-Host ""
+    Write-Host "  NEXT-STEPS auto-clear:" -ForegroundColor DarkGray
+    foreach ($c in $cleared) { Write-Host "    [done] $c" -ForegroundColor DarkGray }
+  }
+
+  if ($content -notmatch "<!-- step:") {
+    Remove-Item $path -Force -ErrorAction SilentlyContinue
+    Write-Host "  NEXT-STEPS.md fully cleared and removed." -ForegroundColor Green
+    return
+  }
+
+  if ($content -ne $original) {
+    Set-Content -Path $path -Value $content -Encoding UTF8 -NoNewline
+  }
+}
+
 function Invoke-FixMode {
   param(
     [switch] $ReadOnly  # doctor verb: audit only, never offer to apply fixes
@@ -771,6 +824,10 @@ else                      { $script:mode = "Install" }
 
 if ($FullDev)     { $script:pcType = "FullDev" }
 elseif ($Shared)  { $script:pcType = "Shared" }
+
+# Auto-clear NEXT-STEPS.md before any verb runs. Idempotent and silent
+# when the file does not exist.
+Update-NextSteps
 
 # Doctor verb is read-only and pcType-agnostic. Run audit and exit before
 # any interactive prompts.
