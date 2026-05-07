@@ -9,11 +9,11 @@
 # Flow: detect -> choose (all questions upfront) -> authenticate -> configure
 #       -> install (unattended) -> clone (unattended) -> verify -> summary
 
-param([switch]$Update, [switch]$DryRun, [switch]$Version, [Alias("h")][switch]$Help)
+param([switch]$Update, [switch]$DryRun, [switch]$ShowVersion, [Alias("h")][switch]$Help)
 
 $script:VERSION = "1.2"
 
-if ($Version) {
+if ($ShowVersion) {
   Write-Host "startupjet v$script:VERSION"
   exit 0
 }
@@ -21,10 +21,10 @@ if ($Version) {
 if ($Help) {
   Write-Host "startupjet v$script:VERSION - fresh-PC bootstrap for Windows"
   Write-Host ""
-  Write-Host "Usage: startupjet.bat [-Update] [-DryRun] [-Version] [-Help]"
-  Write-Host "  -Update    Upgrade all installed tools to latest"
-  Write-Host "  -DryRun    Show what would happen without making changes"
-  Write-Host "  -Version   Show version"
+  Write-Host "Usage: startupjet.bat [-Update] [-DryRun] [-ShowVersion] [-Help]"
+  Write-Host "  -Update       Upgrade all installed tools to latest"
+  Write-Host "  -DryRun       Show what would happen without making changes"
+  Write-Host "  -ShowVersion  Show version"
   Write-Host "  -Help      Show this help"
   exit 0
 }
@@ -522,12 +522,13 @@ if ($notInstalled.Count -eq 0) {
   Write-Host ""
   Write-Host "    [A] Minimal dev    (Git, gh, Python, Node, pwsh, OpenSSH)" -ForegroundColor Cyan
   Write-Host "    [B] Developer      (A + VS Code, Tailscale, cloudflared, dev settings)" -ForegroundColor Cyan
+  Write-Host "    [C] Full setup     (B + Claude Code, OpenAI Codex)" -ForegroundColor Cyan
   if ($script:localAiCapable) {
-    Write-Host "    [C] AI workstation (B + Claude Code, Ollama, recommended models)" -ForegroundColor Cyan
+    Write-Host "    [D] AI workstation (C + Ollama, uv, recommended models)" -ForegroundColor Cyan
   }
-  Write-Host "    [D] Custom         (choose everything yourself)" -ForegroundColor Cyan
+  Write-Host "    [E] Custom         (choose everything yourself)" -ForegroundColor Cyan
   Write-Host ""
-  $presetChoice = Read-Host "  Profile [A/B/C/D]"
+  $presetChoice = Read-Host "  Profile [A/B/C/D/E]"
 
   $presetCategories = @()
   switch ($presetChoice.ToUpper()) {
@@ -564,9 +565,27 @@ if ($notInstalled.Count -eq 0) {
       Write-Host "  Profile: Developer" -ForegroundColor Green
     }
     "C" {
+      $presetNames = @("Git", "GitHub CLI", "Python 3", "PowerShell 7", "OpenSSH", "Node.js", "VS Code", "Tailscale", "cloudflared", "Claude Code", "OpenAI Codex")
+      foreach ($item in $notInstalled) {
+        if ($presetNames -contains $item.name) { $item.selected = $true }
+      }
+      $script:installScope = "user"
+      $authGh = $true; $authTailscale = $true; $authCloudflare = $true
+      $sshKeyPath = Join-Path $env:USERPROFILE ".ssh\id_ed25519"
+      $generateSshKey = -not (Test-Path $sshKeyPath)
+      $applyDevSettings = $true
+      $installExtensions = $false; $extList = @()
+      $extConfigPath = Join-Path $PSScriptRoot "config\vscode-extensions.json"
+      if (Test-Path $extConfigPath) {
+        try { $extData = Get-Content $extConfigPath -Raw | ConvertFrom-Json; $extList = @($extData.extensions); $installExtensions = $extList.Count -gt 0 } catch {}
+      }
+      $script:presetApplied = $true
+      Write-Host "  Profile: Full setup" -ForegroundColor Green
+    }
+    "D" {
       if (-not $script:localAiCapable) {
-        Write-Host "  AI workstation not available (hardware scan showed local AI not supported). Using Developer profile." -ForegroundColor Yellow
-        $presetChoice = "B"
+        Write-Host "  AI workstation not available (hardware scan showed local AI not supported). Using Full setup." -ForegroundColor Yellow
+        $presetChoice = "C"
       }
       $presetNames = @("Git", "GitHub CLI", "Python 3", "PowerShell 7", "OpenSSH", "Node.js", "VS Code", "Tailscale", "cloudflared", "Claude Code", "OpenAI Codex", "Ollama", "uv")
       foreach ($item in $notInstalled) {

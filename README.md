@@ -7,7 +7,7 @@
 On a fresh PC (any OS):
 
 1. **Scans** your system for 14 tools across dev, network, AI coding, and local AI categories. Detects GPU, RAM, disk, and runs a speed test for accurate time estimates.
-2. **Asks everything upfront**: pick a preset (Minimal dev, Developer, AI workstation) or choose Custom. One choice replaces 8 questions.
+2. **Asks everything upfront**: pick a preset (Minimal dev, Developer, Full setup, AI workstation) or choose Custom. One choice replaces 8 questions.
 3. **Authenticates** GitHub, Tailscale, Cloudflare (interactive browser flows, done early).
 4. **Configures** git identity, restores SSH key from vault or generates a new one (adds to GitHub), applies dev settings, saves config.
 5. **Installs** everything you selected via winget/brew/apt, npm, and ollama pull. Fully unattended from here. Progress saved after each item for resume on failure.
@@ -75,7 +75,7 @@ Shows exactly what would be installed, configured, and cloned without making any
 ## Features
 
 - **Cross-platform**: Windows (winget), macOS (Homebrew), Linux (apt). Single config, three runners.
-- **Preset profiles**: Minimal dev, Developer, or AI workstation. One choice replaces 8 questions.
+- **Preset profiles**: Minimal dev, Developer, Full setup, or AI workstation. One choice replaces 8 questions.
 - **Install scope** (Windows): current user only or all users (winget `--scope user` vs `--scope machine`).
 - **Log file**: all output saved to `startupjet-YYYY-MM-DD-HHmm.log` automatically.
 - **SSH key from vault**: if Bitwarden CLI is installed and unlocked, restores existing SSH keys from your vault. Falls back to generating a new ed25519 key.

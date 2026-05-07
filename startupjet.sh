@@ -206,12 +206,13 @@ phase2_choose() {
   header "Phase 2: Choose"
 
   echo ""
-  echo "  [A] Minimal dev    - Git, GitHub CLI, Python, Node, SSH, VS Code"
-  echo "  [B] Developer      - Minimal + Tailscale, cloudflared, Claude Code"
-  echo "  [C] AI workstation - Developer + Ollama, uv, best-fit models"
-  echo "  [D] Custom         - Pick everything yourself"
+  echo "  [A] Minimal dev    - Git, GitHub CLI, Python, Node, pwsh, OpenSSH"
+  echo "  [B] Developer      - A + VS Code, Tailscale, cloudflared, dev settings"
+  echo "  [C] Full setup     - B + Claude Code, OpenAI Codex"
+  echo "  [D] AI workstation - C + Ollama, uv, recommended models"
+  echo "  [E] Custom         - Pick everything yourself"
   echo ""
-  read -rp "Choose a preset [A/B/C/D]: " preset_choice
+  read -rp "Choose a preset [A/B/C/D/E]: " preset_choice
 
   local dev_ids=(1 2 3 4 5 6 7)
   local net_ids=(8 9)
@@ -226,7 +227,7 @@ phase2_choose() {
       INSTALL_EXTENSIONS=true
       ;;
     B)
-      SELECTED_TOOLS=("${dev_ids[@]}" "${net_ids[@]}" "${ai_ids[@]}")
+      SELECTED_TOOLS=("${dev_ids[@]}" "${net_ids[@]}")
       INSTALL_AUTH_GH=true
       INSTALL_AUTH_TS=true
       INSTALL_AUTH_CF=true
@@ -234,6 +235,14 @@ phase2_choose() {
       INSTALL_EXTENSIONS=true
       ;;
     C)
+      SELECTED_TOOLS=("${dev_ids[@]}" "${net_ids[@]}" "${ai_ids[@]}")
+      INSTALL_AUTH_GH=true
+      INSTALL_AUTH_TS=true
+      INSTALL_AUTH_CF=true
+      GENERATE_SSH=true
+      INSTALL_EXTENSIONS=true
+      ;;
+    D)
       SELECTED_TOOLS=("${dev_ids[@]}" "${net_ids[@]}" "${ai_ids[@]}" "${local_ai_ids[@]}")
       INSTALL_AUTH_GH=true
       INSTALL_AUTH_TS=true
@@ -242,14 +251,16 @@ phase2_choose() {
       INSTALL_EXTENSIONS=true
       select_recommended_models
       ;;
-    D)
+    E)
       custom_choose
       return
       ;;
     *)
-      warn "Invalid choice, defaulting to Developer preset."
+      warn "Invalid choice, defaulting to Full setup."
       SELECTED_TOOLS=("${dev_ids[@]}" "${net_ids[@]}" "${ai_ids[@]}")
       INSTALL_AUTH_GH=true
+      INSTALL_AUTH_TS=true
+      INSTALL_AUTH_CF=true
       GENERATE_SSH=true
       INSTALL_EXTENSIONS=true
       ;;
