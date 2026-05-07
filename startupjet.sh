@@ -419,10 +419,26 @@ PYEOF
 phase3_auth() {
   header "Phase 3: Authenticate"
 
+  local reply
+
   if $INSTALL_AUTH_GH && command -v gh &>/dev/null; then
     if gh auth status &>/dev/null; then
-      ok "GitHub CLI already authenticated"
-      SUMMARY_AUTH+=("GitHub (gh)")
+      local gh_user
+      gh_user="$(gh api user --jq .login 2>/dev/null || echo '(unknown)')"
+      info "GitHub CLI already authenticated as: $gh_user"
+      read -rp "  Continue with this account? [Y/n]: " reply
+      if [[ "$reply" != "n" && "$reply" != "N" ]]; then
+        ok "[keep] Using existing GitHub auth"
+        SUMMARY_AUTH+=("GitHub (gh, $gh_user)")
+      else
+        info "Logging out and re-authenticating..."
+        gh auth logout --hostname github.com 2>/dev/null || true
+        if ! $DRY_RUN; then
+          gh auth login && SUMMARY_AUTH+=("GitHub (gh)")
+        else
+          info "[DRY RUN] Would run: gh auth login"
+        fi
+      fi
     else
       info "Launching GitHub CLI login..."
       if ! $DRY_RUN; then
@@ -436,23 +452,59 @@ phase3_auth() {
   fi
 
   if $INSTALL_AUTH_TS && command -v tailscale &>/dev/null; then
-    info "Launching Tailscale login..."
-    if ! $DRY_RUN; then
-      if sudo tailscale up; then
-        SUMMARY_AUTH+=("Tailscale")
+    if tailscale status &>/dev/null; then
+      local ts_user="(unknown)"
+      if command -v jq &>/dev/null; then
+        local ts_uid
+        ts_uid="$(tailscale status --json 2>/dev/null | jq -r .Self.UserID 2>/dev/null)"
+        if [[ -n "$ts_uid" && "$ts_uid" != "null" ]]; then
+          ts_user="$(tailscale status --json 2>/dev/null | jq -r ".User.\"$ts_uid\".LoginName" 2>/dev/null || echo '(unknown)')"
+        fi
+      fi
+      info "Tailscale already up as: $ts_user"
+      read -rp "  Continue with this Tailscale session? [Y/n]: " reply
+      if [[ "$reply" != "n" && "$reply" != "N" ]]; then
+        ok "[keep] Using existing Tailscale connection"
+        SUMMARY_AUTH+=("Tailscale ($ts_user)")
       else
-        warn "Tailscale login skipped"
+        info "Logging out and re-authenticating..."
+        sudo tailscale logout 2>/dev/null || true
+        if ! $DRY_RUN; then
+          if sudo tailscale up; then SUMMARY_AUTH+=("Tailscale"); else warn "Tailscale login skipped"; fi
+        else
+          info "[DRY RUN] Would run: sudo tailscale up"
+        fi
       fi
     else
-      info "[DRY RUN] Would run: sudo tailscale up"
+      info "Launching Tailscale login..."
+      if ! $DRY_RUN; then
+        if sudo tailscale up; then SUMMARY_AUTH+=("Tailscale"); else warn "Tailscale login skipped"; fi
+      else
+        info "[DRY RUN] Would run: sudo tailscale up"
+      fi
     fi
   fi
 
   if $INSTALL_AUTH_CF && command -v cloudflared &>/dev/null; then
     local cf_cert="${HOME}/.cloudflared/cert.pem"
     if [[ -f "$cf_cert" ]]; then
-      info "[skip] cloudflared cert already exists at $cf_cert (delete it to re-login)"
-      SUMMARY_AUTH+=("cloudflared (existing cert)")
+      local cert_date
+      cert_date="$(date -r "$cf_cert" '+%Y-%m-%d' 2>/dev/null || stat -c '%y' "$cf_cert" 2>/dev/null | cut -c1-10 || echo 'unknown')"
+      info "cloudflared cert already exists at $cf_cert (last modified $cert_date)"
+      read -rp "  Continue with this cert? [Y/n]: " reply
+      if [[ "$reply" != "n" && "$reply" != "N" ]]; then
+        ok "[keep] Using existing cloudflared cert"
+        SUMMARY_AUTH+=("cloudflared (existing cert)")
+      else
+        local backup="$cf_cert.backup-$(date +%Y%m%d-%H%M%S)"
+        info "Backing up existing cert to $backup and re-authenticating..."
+        mv "$cf_cert" "$backup"
+        if ! $DRY_RUN; then
+          if cloudflared tunnel login; then SUMMARY_AUTH+=("cloudflared"); else warn "Cloudflare login skipped"; fi
+        else
+          info "[DRY RUN] Would run: cloudflared tunnel login"
+        fi
+      fi
     elif ! $DRY_RUN; then
       info "Launching Cloudflare login..."
       if cloudflared tunnel login; then

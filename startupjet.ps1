@@ -79,6 +79,81 @@ function Test-Command($name) {
   $null -ne (Get-Command $name -ErrorAction SilentlyContinue)
 }
 
+function Confirm-Default-Yes($prompt) {
+  $reply = Read-Host $prompt
+  return ($reply -ne "n" -and $reply -ne "N")
+}
+
+function Invoke-GhAuth {
+  $ghStatus = gh auth status 2>&1
+  if ($LASTEXITCODE -eq 0) {
+    $currentUser = (gh api user --jq .login 2>$null | Out-String).Trim()
+    if (-not $currentUser) { $currentUser = "(unknown)" }
+    Write-Host ("  GitHub CLI already authenticated as: {0}" -f $currentUser) -ForegroundColor Cyan
+    if (Confirm-Default-Yes "  Continue with this account? [Y/n]") {
+      Write-Host "  [keep] Using existing GitHub auth" -ForegroundColor Green
+      if ($script:summary.authenticated -notcontains "GitHub (gh)") {
+        $script:summary.authenticated += "GitHub (gh, $currentUser)"
+      }
+      return
+    }
+    Write-Host "  Logging out and re-authenticating..." -ForegroundColor Yellow
+    gh auth logout --hostname github.com 2>&1 | Out-Null
+  }
+  Write-Host "  Running gh auth login..."
+  gh auth login
+  $script:summary.authenticated += "GitHub (gh)"
+}
+
+function Invoke-TailscaleAuth {
+  $tsStatus = tailscale status 2>&1
+  if ($LASTEXITCODE -eq 0) {
+    $tsUser = "(unknown)"
+    try {
+      $tsJson = tailscale status --json 2>$null | ConvertFrom-Json
+      $uid = "$($tsJson.Self.UserID)"
+      if ($tsJson.User.PSObject.Properties[$uid]) {
+        $tsUser = $tsJson.User.$uid.LoginName
+      }
+    } catch { }
+    Write-Host ("  Tailscale already up as: {0}" -f $tsUser) -ForegroundColor Cyan
+    if (Confirm-Default-Yes "  Continue with this Tailscale session? [Y/n]") {
+      Write-Host "  [keep] Using existing Tailscale connection" -ForegroundColor Green
+      if ($script:summary.authenticated -notcontains "Tailscale") {
+        $script:summary.authenticated += "Tailscale ($tsUser)"
+      }
+      return
+    }
+    Write-Host "  Running tailscale logout and tailscale up..." -ForegroundColor Yellow
+    tailscale logout 2>&1 | Out-Null
+  }
+  Write-Host "  Running tailscale up..."
+  tailscale up
+  $script:summary.authenticated += "Tailscale"
+}
+
+function Invoke-CloudflaredAuth {
+  $cfCert = Join-Path $env:USERPROFILE ".cloudflared\cert.pem"
+  if (Test-Path $cfCert) {
+    $certDate = (Get-Item $cfCert).LastWriteTime.ToString("yyyy-MM-dd")
+    Write-Host ("  cloudflared cert already exists at {0} (last modified {1})" -f $cfCert, $certDate) -ForegroundColor Cyan
+    if (Confirm-Default-Yes "  Continue with this cert? [Y/n]") {
+      Write-Host "  [keep] Using existing cloudflared cert" -ForegroundColor Green
+      if ($script:summary.authenticated -notcontains "cloudflared") {
+        $script:summary.authenticated += "cloudflared (existing cert)"
+      }
+      return
+    }
+    Write-Host "  Backing up existing cert and re-authenticating..." -ForegroundColor Yellow
+    $backup = "$cfCert.backup-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+    Move-Item $cfCert $backup -Force
+    Write-Host "  Cert moved to $backup"
+  }
+  Write-Host "  Running cloudflared tunnel login..."
+  cloudflared tunnel login
+  $script:summary.authenticated += "cloudflared"
+}
+
 function Refresh-SessionPath {
   $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
   $userPath    = [System.Environment]::GetEnvironmentVariable("Path", "User")
@@ -881,12 +956,12 @@ $authCloudflare = $false
 
 if (Test-Command "gh") {
   $ghStatus = gh auth status 2>&1
-  if ($LASTEXITCODE -ne 0) {
+  if ($LASTEXITCODE -eq 0) {
+    Write-Host "  [OK] GitHub CLI already authenticated (will confirm in PHASE 3)" -ForegroundColor Green
+    $authGh = $true
+  } else {
     $reply = Read-Host "  Authenticate GitHub CLI? [Y/n]"
     $authGh = ($reply -ne "n" -and $reply -ne "N")
-  } else {
-    Write-Host "  [OK] GitHub CLI already authenticated" -ForegroundColor Green
-    $script:summary.authenticated += "GitHub (gh)"
   }
 } else {
   Write-Host "  [skip] gh not installed yet (will auth after install if selected)" -ForegroundColor Yellow
@@ -1039,16 +1114,12 @@ Write-Host ("=" * 60) -ForegroundColor Green
 Write-Phase "PHASE 3, authenticate"
 
 if ($authGh -and (Test-Command "gh")) {
-  Write-Host "  Running gh auth login..."
-  gh auth login
-  $script:summary.authenticated += "GitHub (gh)"
+  Invoke-GhAuth
 }
 
 if ($authTailscale) {
   if (Test-Command "tailscale") {
-    Write-Host "  Running tailscale up..."
-    tailscale up
-    $script:summary.authenticated += "Tailscale"
+    Invoke-TailscaleAuth
   } else {
     Write-Host "  [defer] Tailscale not installed yet, will auth after install" -ForegroundColor Yellow
   }
@@ -1056,15 +1127,7 @@ if ($authTailscale) {
 
 if ($authCloudflare) {
   if (Test-Command "cloudflared") {
-    $cfCert = Join-Path $env:USERPROFILE ".cloudflared\cert.pem"
-    if (Test-Path $cfCert) {
-      Write-Host "  [skip] cloudflared cert already exists at $cfCert (delete it to re-login)" -ForegroundColor Yellow
-      $script:summary.authenticated += "cloudflared (existing cert)"
-    } else {
-      Write-Host "  Running cloudflared tunnel login..."
-      cloudflared tunnel login
-      $script:summary.authenticated += "cloudflared"
-    }
+    Invoke-CloudflaredAuth
   } else {
     Write-Host "  [defer] cloudflared not installed yet, will auth after install" -ForegroundColor Yellow
   }
@@ -1352,26 +1415,20 @@ if ($toInstall.Count -eq 0) {
   # 5e: deferred auth (tools installed above that need auth)
   Refresh-SessionPath
 
-  if ($authGh -and (Test-Command "gh") -and ($script:summary.authenticated -notcontains "GitHub (gh)")) {
-    Write-Host "  Running deferred gh auth login..."
-    gh auth login
-    $script:summary.authenticated += "GitHub (gh)"
+  $ghDone = @($script:summary.authenticated | Where-Object { $_ -like "GitHub (gh*" }).Count -gt 0
+  if ($authGh -and (Test-Command "gh") -and -not $ghDone) {
+    Write-Host "  Deferred GitHub auth..."
+    Invoke-GhAuth
   }
-  if ($authTailscale -and (Test-Command "tailscale") -and ($script:summary.authenticated -notcontains "Tailscale")) {
-    Write-Host "  Running deferred tailscale up..."
-    tailscale up
-    $script:summary.authenticated += "Tailscale"
+  $tsDone = @($script:summary.authenticated | Where-Object { $_ -like "Tailscale*" }).Count -gt 0
+  if ($authTailscale -and (Test-Command "tailscale") -and -not $tsDone) {
+    Write-Host "  Deferred Tailscale auth..."
+    Invoke-TailscaleAuth
   }
-  if ($authCloudflare -and (Test-Command "cloudflared") -and ($script:summary.authenticated -notcontains "cloudflared") -and ($script:summary.authenticated -notcontains "cloudflared (existing cert)")) {
-    $cfCert = Join-Path $env:USERPROFILE ".cloudflared\cert.pem"
-    if (Test-Path $cfCert) {
-      Write-Host "  [skip] cloudflared cert already exists at $cfCert (delete it to re-login)" -ForegroundColor Yellow
-      $script:summary.authenticated += "cloudflared (existing cert)"
-    } else {
-      Write-Host "  Running deferred cloudflared tunnel login..."
-      cloudflared tunnel login
-      $script:summary.authenticated += "cloudflared"
-    }
+  $cfDone = @($script:summary.authenticated | Where-Object { $_ -like "cloudflared*" }).Count -gt 0
+  if ($authCloudflare -and (Test-Command "cloudflared") -and -not $cfDone) {
+    Write-Host "  Deferred cloudflared auth..."
+    Invoke-CloudflaredAuth
   }
 
   # 5f: deferred git config (if git was just installed)
