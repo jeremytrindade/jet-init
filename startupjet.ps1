@@ -15,9 +15,12 @@ param(
   [switch]$Fix,         # audit-only: walk profiles for duplicates, do not install
   [switch]$FullDev,     # full developer PC: cross-account install (Machine scope)
   [switch]$Shared,      # shared PC: per-account install only (User scope)
+  [switch]$Yes,         # non-interactive: accept the default answer at every prompt
   [switch]$ShowVersion,
   [Alias("h")][switch]$Help
 )
+
+$script:assumeYes = [bool]$Yes
 
 $script:VERSION = "1.2"
 
@@ -45,6 +48,7 @@ if ($Help) {
   Write-Host "                no machine-wide changes."
   Write-Host ""
   Write-Host "Other:"
+  Write-Host "  -Yes          Non-interactive, accept the default at every prompt"
   Write-Host "  -DryRun       Show what would happen without making changes"
   Write-Host "  -ShowVersion  Show version"
   Write-Host "  -Help         Show this help"
@@ -545,7 +549,7 @@ function Invoke-FixMode {
       $findings += [pscustomobject]@{
         Tool      = "npm globals"
         WastedGB  = [math]::Round($extra, 2)
-        FixerPath = "(planned: tools\migrate-shared-caches.bat)"
+        FixerPath = Join-Path $PSScriptRoot "tools\migrate-shared-caches.bat"
       }
       Write-Host ("    -> ~{0:N2} GB recoverable across {1} accounts" -f $extra, $npmDirs.Count) -ForegroundColor Yellow
     } else {
@@ -582,7 +586,7 @@ function Invoke-FixMode {
       $findings += [pscustomobject]@{
         Tool      = "uv cache"
         WastedGB  = [math]::Round($extra, 2)
-        FixerPath = "(planned: tools\migrate-shared-caches.bat)"
+        FixerPath = Join-Path $PSScriptRoot "tools\migrate-shared-caches.bat"
       }
       Write-Host ("    -> ~{0:N2} GB recoverable across {1} accounts" -f $extra, $uvDirs.Count) -ForegroundColor Yellow
     } else {
@@ -619,7 +623,7 @@ function Invoke-FixMode {
       $findings += [pscustomobject]@{
         Tool      = "pip cache"
         WastedGB  = [math]::Round($extra, 2)
-        FixerPath = "(planned: tools\migrate-shared-caches.bat)"
+        FixerPath = Join-Path $PSScriptRoot "tools\migrate-shared-caches.bat"
       }
       Write-Host ("    -> ~{0:N2} GB recoverable across {1} accounts" -f $extra, $pipDirs.Count) -ForegroundColor Yellow
     } else {
@@ -657,11 +661,18 @@ function Invoke-FixMode {
     }
   }
 
-  $cachesPlanned = $findings | Where-Object { $_.Tool -ne "Ollama models" }
-  if ($cachesPlanned.Count -gt 0) {
-    Write-Host ""
-    Write-Host "  Cache consolidation tool (npm / uv / pip) is planned but not yet shipped." -ForegroundColor DarkYellow
-    Write-Host "  Track at: https://github.com/jeremytrindade/startupjet/issues" -ForegroundColor DarkGray
+  $cacheFindings = $findings | Where-Object { $_.Tool -ne "Ollama models" }
+  if ($cacheFindings.Count -gt 0) {
+    $cacheTool = Join-Path $PSScriptRoot "tools\migrate-shared-caches.bat"
+    if ($script:isAdmin) {
+      $reply = Read-Host "  Run the cache consolidation (npm / uv / pip) now? [Y/n]"
+      if ($reply -ne "n" -and $reply -ne "N") {
+        & $cacheTool
+      }
+    } else {
+      Write-Host ""
+      Write-Host "  To consolidate caches: right-click $cacheTool -> Run as administrator." -ForegroundColor Yellow
+    }
   }
   Write-Host ""
 }
@@ -721,6 +732,31 @@ else              { $script:mode = "Install" }
 if ($FullDev)     { $script:pcType = "FullDev" }
 elseif ($Shared)  { $script:pcType = "Shared" }
 
+# Read persisted pcType from a previous run, unless overridden by flag.
+$persistedPcType = $null
+$prevConfigPath = Join-Path $PSScriptRoot "config\user-config.json"
+if ((-not $script:pcType) -and (Test-Path $prevConfigPath)) {
+  try {
+    $prev = Get-Content $prevConfigPath -Raw | ConvertFrom-Json
+    if ($prev.pcType) {
+      $persistedPcType = $prev.pcType
+      $script:pcType   = $prev.pcType
+    }
+  } catch { }
+}
+
+function Read-HostOrDefault {
+  param(
+    [Parameter(Mandatory)] [string] $Prompt,
+    [string] $Default = ""
+  )
+  if ($script:assumeYes) {
+    Write-Host ("{0}: {1}  (auto, -Yes)" -f $Prompt, $Default) -ForegroundColor DarkGray
+    return $Default
+  }
+  return (Read-Host $Prompt)
+}
+
 # Interactive top-level mode prompt only when no mode flag was passed.
 if (-not $Update -and -not $Fix -and -not $FullDev -and -not $Shared) {
   Write-Host ""
@@ -729,7 +765,7 @@ if (-not $Update -and -not $Fix -and -not $FullDev -and -not $Shared) {
   Write-Host "    [F] Fix / audit only (walk every account, no install)"
   Write-Host "    [U] Update installed tools"
   Write-Host "    [Q] Quit"
-  $reply = Read-Host "  Choice [I/F/U/Q]"
+  $reply = Read-HostOrDefault "  Choice [I/F/U/Q]" "I"
   switch -Regex ($reply) {
     "^[Ff]" { $script:mode = "Fix";    break }
     "^[Uu]" { $script:mode = "Update"; break }
@@ -748,8 +784,11 @@ if (($script:mode -eq "Install" -or $script:mode -eq "Fix") -and -not $script:pc
   Write-Host "    [S] Shared PC" -ForegroundColor Cyan
   Write-Host "        other people use this too, install per-account only,"
   Write-Host "        no machine-wide changes."
-  $reply = Read-Host "  Choice [F/S]"
+  $reply = Read-HostOrDefault "  Choice [F/S]" "F"
   $script:pcType = if ($reply -match "^[Ss]") { "Shared" } else { "FullDev" }
+} elseif ($persistedPcType -and -not $FullDev -and -not $Shared) {
+  Write-Host ""
+  Write-Host "  PC type from last run: $persistedPcType (use -FullDev or -Shared to override)" -ForegroundColor DarkGray
 }
 
 if ($script:pcType -eq "FullDev" -and -not $script:isAdmin) {
@@ -771,7 +810,7 @@ if ($script:mode -eq "Fix") {
 # In FullDev install mode, offer the audit before continuing.
 if ($script:mode -eq "Install" -and $script:pcType -eq "FullDev") {
   Write-Host ""
-  $reply = Read-Host "  Review and rectify existing PC structure first (find duplicates, consolidate)? [Y/n]"
+  $reply = Read-HostOrDefault "  Review and rectify existing PC structure first (find duplicates, consolidate)? [Y/n]" "Y"
   if ($reply -ne "n" -and $reply -ne "N") {
     Invoke-FixMode
   }
@@ -1821,11 +1860,13 @@ $configDir = Join-Path $PSScriptRoot "config"
 New-Item -ItemType Directory -Force -Path $configDir | Out-Null
 $configPath = Join-Path $configDir "user-config.json"
 @{
-  workspacePath = $workspacePath
-  githubUser    = $githubUser
-  gitEmail      = $gitEmail
-  installScope  = $script:installScope
-  timestamp     = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+  workspacePath    = $workspacePath
+  githubUser       = $githubUser
+  gitEmail         = $gitEmail
+  installScope     = $script:installScope
+  pcType           = $script:pcType
+  ollamaModelsPath = $script:ollamaModelsPath
+  timestamp        = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 } | ConvertTo-Json | Out-File $configPath -Encoding UTF8
 Write-Host "  [OK] Config saved to $configPath" -ForegroundColor Green
 
