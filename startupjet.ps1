@@ -42,6 +42,15 @@ function Test-IsAdmin {
 $script:isAdmin = Test-IsAdmin
 $script:presetApplied = $false
 
+# === Force UTF-8 console output ===
+# Without this, native commands that draw with Unicode block characters
+# (ollama's progress bar, npm's spinners, etc.) print garbage like "Ôûò"
+# and "ÔûÅ" because PowerShell's default OEM code page interprets each
+# UTF-8 byte separately. chcp 65001 + UTF-8 OutputEncoding fixes it.
+try { $null = & cmd /c "chcp 65001 >NUL 2>&1" } catch {}
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+try { $OutputEncoding           = [System.Text.Encoding]::UTF8 } catch {}
+
 # === Log file ===
 $logFile = Join-Path $PSScriptRoot "startupjet-$(Get-Date -Format 'yyyy-MM-dd-HHmm').log"
 Start-Transcript -Path $logFile -Append | Out-Null
@@ -512,7 +521,10 @@ if ($Update) {
     if ($modelUpgrades.Count -gt 0 -and (Test-Command "ollama")) {
       foreach ($item in $modelUpgrades) {
         Write-Host "  Pulling latest $($item.name)..."
-        ollama pull $item.name 2>&1
+        # No 2>&1: ollama needs the real stderr handle to draw its progress bar.
+        # Redirecting collapses stderr into the PS pipeline and ollama logs
+        # "failed to get console mode for stderr" then garbles the bar.
+        ollama pull $item.name
         if ($LASTEXITCODE -eq 0) {
           Write-Host ("  [OK] $($item.name)") -ForegroundColor Green
           $script:summary.upgraded += $item.name
@@ -1399,7 +1411,8 @@ if ($toInstall.Count -eq 0) {
           continue
         }
         Write-Host ("  Pulling $($item.name) ($($item.size), this may take a while)...")
-        ollama pull $item.name 2>&1
+        # No 2>&1: ollama needs the real stderr handle to draw its progress bar.
+        ollama pull $item.name
         if ($LASTEXITCODE -eq 0) {
           Write-Host ("  [OK] $($item.name)") -ForegroundColor Green
           $script:summary.modelsLoaded += $item.name
