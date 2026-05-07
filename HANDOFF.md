@@ -27,6 +27,8 @@
 
 ## Recently done (this 2026-05-07 arc)
 
+- **Promoted HANDOFF/NEXT-STEPS pattern to public/universal layer.** Added `jet-rules` Rule 14 ("Make sessions resumable, not memorized") at v1.1.0, tagged. Updated `jet-playbook` Rule 41 to cross-reference Rule 14 as its base. Two-layer relationship is now explicit: jet-rules Rule 14 is the universal practice (any developer, any stack), jet-playbook Rule 41 is the concrete file format + auto-clear mechanism + jet-init reference implementation.
+- Created `HANDOFF.md` and `NEXT-STEPS.md` at the repo root, with `Update-NextSteps` function in `jet-init.ps1` that auto-clears completed sections on every verb invocation.
 - Extended `github-clone-all` to also `git pull --ff-only` existing repos (dirty-tree skip), brought `D:\aijetlabs\github\` from 8 to 73 repos.
 - Created `jet-oss` (Layer 3 rules for going public) with 6 rules.
 - Renamed `github-clone-all` to `github-sync-all` per playbook Rule 30, then archived to `github-sync-all-archive`, then created fresh `github-sync-all` v0.1.0 public.
